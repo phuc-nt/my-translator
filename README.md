@@ -14,6 +14,8 @@
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License">
 </p>
 
+> 📖 **[Hướng dẫn cài đặt (Tiếng Việt)](docs/installation_guide_vi.md)**
+
 ## Features
 
 - **Real-time transcription & translation** — powered by Soniox STT v4
