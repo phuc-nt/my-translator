@@ -19,7 +19,8 @@ export class TranscriptUI {
         this.viewMode = 'single'; // 'single' or 'dual'
 
         // Segments: each has { original, translation, status, speaker, language, confidence }
-        this.segments = [];
+        this.segments = [];       // Display segments (trimmed for viewport)
+        this.allSegments = [];    // Full history (never trimmed, used for save/copy)
         this.provisionalText = '';
         this.provisionalSpeaker = null;
         this.provisionalLanguage = null;
@@ -56,7 +57,7 @@ export class TranscriptUI {
      */
     addOriginal(text, speaker, language) {
         this._removeListening();
-        this.segments.push({
+        const seg = {
             original: text,
             translation: null,
             status: 'original',
@@ -64,7 +65,9 @@ export class TranscriptUI {
             language: language || null,
             confidence: this.lastConfidence,
             createdAt: Date.now(),
-        });
+        };
+        this.segments.push(seg);
+        this.allSegments.push(seg);  // Same object ref — mutations shared
         if (speaker) this.currentSpeaker = speaker;
         if (language) this.currentLanguage = language;
         this._cleanupStaleOriginals();
@@ -75,17 +78,28 @@ export class TranscriptUI {
      * Apply translation to the oldest untranslated segment
      */
     addTranslation(text) {
+        // Try display list first (shared ref updates allSegments too)
         const seg = this.segments.find(s => s.status === 'original');
         if (seg) {
             seg.translation = text;
             seg.status = 'translated';
         } else {
-            this.segments.push({
-                original: '',
-                translation: text,
-                status: 'translated',
-                speaker: null,
-            });
+            // Fallback: check allSegments for originals trimmed from display
+            const allSeg = this.allSegments.find(s => s.status === 'original');
+            if (allSeg) {
+                allSeg.translation = text;
+                allSeg.status = 'translated';
+            } else {
+                // No matching original anywhere — create orphan segment
+                const newSeg = {
+                    original: '',
+                    translation: text,
+                    status: 'translated',
+                    speaker: null,
+                };
+                this.segments.push(newSeg);
+                this.allSegments.push(newSeg);
+            }
         }
         this._render();
     }
@@ -136,6 +150,7 @@ export class TranscriptUI {
       </div>
     `;
         this.segments = [];
+        this.allSegments = [];
         this.provisionalText = '';
         this.provisionalSpeaker = null;
         this.provisionalLanguage = null;
@@ -198,7 +213,7 @@ export class TranscriptUI {
      */
     getPlainText() {
         let lines = [];
-        for (const seg of this.segments) {
+        for (const seg of this.allSegments) {
             if (seg.original) lines.push(seg.original);
             if (seg.translation) lines.push(seg.translation);
             if (seg.original || seg.translation) lines.push('');
@@ -211,7 +226,7 @@ export class TranscriptUI {
      * Get formatted content for saving to file (markdown with metadata)
      */
     getFormattedContent(metadata = {}) {
-        if (this.segments.length === 0) return null;
+        if (this.allSegments.length === 0) return null;
 
         const lines = [];
 
@@ -223,12 +238,12 @@ export class TranscriptUI {
         if (metadata.targetLang) lines.push(`target_language: ${metadata.targetLang}`);
         if (metadata.duration) lines.push(`recording_duration: ${metadata.duration}`);
         if (metadata.audioSource) lines.push(`audio_source: ${metadata.audioSource}`);
-        lines.push(`segments: ${this.segments.length}`);
+        lines.push(`segments: ${this.allSegments.length}`);
         lines.push('---');
         lines.push('');
 
-        // Transcript entries
-        for (const seg of this.segments) {
+        // Transcript entries (full history)
+        for (const seg of this.allSegments) {
             if (seg.speaker) lines.push(`**Speaker ${seg.speaker}:**`);
             if (seg.original) lines.push(`> ${seg.original}`);
             if (seg.translation) lines.push(seg.translation);
@@ -242,7 +257,7 @@ export class TranscriptUI {
      * Check if there are segments to save
      */
     hasSegments() {
-        return this.segments.length > 0;
+        return this.allSegments.length > 0;
     }
 
     /**
@@ -251,6 +266,7 @@ export class TranscriptUI {
     clear() {
         this.container.innerHTML = '';
         this.segments = [];
+        this.allSegments = [];
         this.provisionalText = '';
         this.provisionalSpeaker = null;
         this.provisionalLanguage = null;
