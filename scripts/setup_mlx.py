@@ -56,9 +56,13 @@ def is_setup_complete(env_dir):
 
 def check_system_python():
     """Find a suitable Python 3.10+ for creating venv."""
+    home = os.path.expanduser("~")
     candidates = [
+        os.path.join(home, ".pyenv", "shims", "python3"),
         "/opt/homebrew/bin/python3",
         "/usr/local/bin/python3",
+        os.path.join(home, "miniconda3", "bin", "python3"),
+        os.path.join(home, "anaconda3", "bin", "python3"),
         shutil.which("python3"),
     ]
     for path in candidates:
