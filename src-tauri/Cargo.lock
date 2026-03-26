@@ -2407,6 +2407,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "my-translator"
+version = "0.4.2"
+dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "cpal",
+ "dirs",
+ "futures-util",
+ "hex",
+ "http",
+ "rand 0.8.5",
+ "reqwest 0.12.28",
+ "screencapturekit",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-opener",
+ "tauri-plugin-process",
+ "tauri-plugin-updater",
+ "tokio-tungstenite",
+ "uuid",
+ "windows 0.58.0",
+]
+
+[[package]]
 name = "native-tls"
 version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2862,32 +2889,6 @@ name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
-
-[[package]]
-name = "personal-translator"
-version = "0.4.2"
-dependencies = [
- "base64 0.22.1",
- "chrono",
- "cpal",
- "dirs",
- "futures-util",
- "hex",
- "http",
- "rand 0.8.5",
- "reqwest 0.12.28",
- "screencapturekit",
- "serde",
- "serde_json",
- "sha2",
- "tauri",
- "tauri-build",
- "tauri-plugin-opener",
- "tauri-plugin-updater",
- "tokio-tungstenite",
- "uuid",
- "windows 0.58.0",
-]
 
 [[package]]
 name = "phf"
@@ -4576,6 +4577,16 @@ dependencies = [
  "url",
  "windows 0.61.3",
  "zbus",
+]
+
+[[package]]
+name = "tauri-plugin-process"
+version = "2.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d55511a7bf6cd70c8767b02c97bf8134fa434daf3926cfc1be0a0f94132d165a"
+dependencies = [
+ "tauri",
+ "tauri-plugin",
 ]
 
 [[package]]

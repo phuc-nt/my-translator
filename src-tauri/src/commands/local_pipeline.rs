@@ -8,6 +8,80 @@ pub struct LocalPipelineState {
     pub process: Mutex<Option<Child>>,
 }
 
+/// Build a PATH that includes common Python install locations and the user's shell PATH.
+/// GUI apps on macOS don't inherit the user's shell PATH, so we must reconstruct it.
+fn build_rich_path() -> String {
+    let home = std::env::var("HOME").unwrap_or_else(|_| String::from("/root"));
+    let mut dirs: Vec<String> = vec![
+        // Homebrew (Apple Silicon + Intel)
+        "/opt/homebrew/bin".into(),
+        "/usr/local/bin".into(),
+        // pyenv
+        format!("{}/.pyenv/shims", home),
+        format!("{}/.pyenv/bin", home),
+        // Typical conda locations
+        format!("{}/miniconda3/bin", home),
+        format!("{}/anaconda3/bin", home),
+        // System
+        "/usr/bin".into(),
+        "/bin".into(),
+    ];
+
+    // Also try to get the real user PATH from a login shell (best-effort)
+    if let Ok(output) = Command::new("/bin/zsh")
+        .args(["-l", "-c", "echo $PATH"])
+        .output()
+    {
+        if output.status.success() {
+            let shell_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            for entry in shell_path.split(':') {
+                let s = entry.to_string();
+                if !dirs.contains(&s) {
+                    dirs.push(s);
+                }
+            }
+        }
+    }
+
+    dirs.join(":")
+}
+
+/// Find a working Python 3.10+ binary, checking common locations.
+fn find_python3() -> String {
+    let home = std::env::var("HOME").unwrap_or_else(|_| String::from("/root"));
+    let candidates = [
+        format!("{}/.pyenv/shims/python3", home),
+        "/opt/homebrew/bin/python3".into(),
+        "/usr/local/bin/python3".into(),
+        format!("{}/miniconda3/bin/python3", home),
+        format!("{}/anaconda3/bin/python3", home),
+    ];
+
+    for path in &candidates {
+        let p = std::path::Path::new(path);
+        if p.exists() {
+            // Verify it's actually 3.10+
+            if let Ok(output) = Command::new(path).arg("--version").output() {
+                let ver = String::from_utf8_lossy(&output.stdout);
+                if let Some(version) = ver.strip_prefix("Python ") {
+                    let parts: Vec<&str> = version.trim().split('.').collect();
+                    if let (Ok(major), Ok(minor)) = (
+                        parts.first().unwrap_or(&"0").parse::<u32>(),
+                        parts.get(1).unwrap_or(&"0").parse::<u32>(),
+                    ) {
+                        if major >= 3 && minor >= 10 {
+                            return path.clone();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback — hope it's on PATH
+    "python3".into()
+}
+
 fn log_to_file(msg: &str) {
     use std::fs::OpenOptions;
     let _ = OpenOptions::new()
@@ -80,20 +154,19 @@ pub fn start_local_pipeline(
     let _ = channel.send(format!(r#"{{"type":"status","message":"Starting Python pipeline..."}}"#));
 
     // Use venv python if MLX setup is complete, otherwise fall back to system python
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/Users/phucnt".to_string());
+    let home = std::env::var("HOME").unwrap_or_else(|_| String::from("/root"));
     let venv_python = format!("{}/Library/Application Support/My Translator/mlx-env/bin/python3", home);
 
     let python = if std::path::Path::new(&venv_python).exists() {
         log_to_file(&format!("Using venv python: {}", venv_python));
-        venv_python.as_str().to_string()
-    } else if std::path::Path::new("/opt/homebrew/bin/python3").exists() {
-        log_to_file("Using homebrew python");
-        "/opt/homebrew/bin/python3".to_string()
+        venv_python.clone()
     } else {
-        "python3".to_string()
+        let found = find_python3();
+        log_to_file(&format!("Using system python: {}", found));
+        found
     };
 
-    let path_env = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin";
+    let path_env = build_rich_path();
 
     let mut child = Command::new(&python)
         .arg(&script_path)
@@ -222,7 +295,7 @@ fn stop_local_pipeline_inner(state: &LocalPipelineState) {
 /// Check if MLX setup is complete
 #[tauri::command]
 pub fn check_mlx_setup() -> Result<String, String> {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/Users/phucnt".to_string());
+    let home = std::env::var("HOME").unwrap_or_else(|_| String::from("/root"));
     let marker = format!("{}/Library/Application Support/My Translator/mlx-env/.setup_complete", home);
     let venv_python = format!("{}/Library/Application Support/My Translator/mlx-env/bin/python3", home);
 
@@ -261,14 +334,14 @@ pub fn run_mlx_setup(
     };
 
     // Use system python to run setup (which creates the venv)
-    let python = if std::path::Path::new("/opt/homebrew/bin/python3").exists() {
-        "/opt/homebrew/bin/python3"
-    } else {
-        "python3"
-    };
+    let python = find_python3();
+    let home = std::env::var("HOME").unwrap_or_else(|_| String::from("/root"));
+    let path_env = build_rich_path();
 
-    let mut child = Command::new(python)
+    let mut child = Command::new(&python)
         .arg(&script_path)
+        .env("PATH", &path_env)
+        .env("HOME", &home)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
