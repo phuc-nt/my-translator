@@ -33,6 +33,7 @@ class App {
         this.ttsEnabled = false;  // TTS runtime toggle
         this.isPinned = true;     // Always-on-top state
         this.isCompact = false;   // Compact mode (hide control bar)
+        this.sidebarOpen = false; // Sidebar toggle state (always starts closed)
     }
 
     async init() {
@@ -81,7 +82,7 @@ class App {
         this._initAboutTab();
         this._checkForUpdates();
 
-        console.log('🌐 My Translator v0.5.0 initialized');
+        console.log('🌐 MyJavis v0.5.0 initialized');
     }
 
     async _checkPlatformSupport() {
@@ -114,6 +115,11 @@ class App {
     // ─── Event Binding ──────────────────────────────────────
 
     _bindEvents() {
+        // Sidebar toggle
+        document.getElementById('btn-toggle-sidebar').addEventListener('click', () => {
+            this._toggleSidebar();
+        });
+
         // Settings button
         document.getElementById('btn-settings').addEventListener('click', () => {
             this._showView('settings');
@@ -1497,6 +1503,12 @@ class App {
     }
 
     // ─── Compact Mode ───────────────────────────────
+
+    _toggleSidebar() {
+        this.sidebarOpen = !this.sidebarOpen;
+        const sidebar = document.getElementById('sidebar');
+        sidebar.classList.toggle('hidden', !this.sidebarOpen);
+    }
 
     _toggleCompact() {
         this.isCompact = !this.isCompact;

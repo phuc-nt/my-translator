@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════
-   My Translator — Main Stylesheet
+   MyJavis — Main Stylesheet
    Dark glassmorphism overlay theme
    ═══════════════════════════════════════════════════════════ */
 
@@ -402,6 +402,94 @@ body {
   50% {
     box-shadow: 0 0 10px 3px rgba(248, 113, 113, 0.2);
   }
+}
+
+/* ─── Content Area (sidebar + transcript row) ──────────── */
+#content-area {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ─── Sidebar ───────────────────────────────────────────── */
+.sidebar {
+  width: 180px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: rgba(15, 15, 22, 0.6);
+  border-right: 1px solid var(--border-subtle);
+  transition: width var(--transition-normal), opacity var(--transition-normal);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 6px;
+}
+
+.sidebar.hidden {
+  width: 0;
+  padding: 0;
+  opacity: 0;
+  border-right: none;
+  overflow: hidden;
+}
+
+#btn-new-conversation {
+  width: 100%;
+  padding: 7px 10px;
+  background: rgba(99, 140, 255, 0.12);
+  border: 1px solid rgba(99, 140, 255, 0.25);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+}
+
+#btn-new-conversation:hover {
+  background: rgba(99, 140, 255, 0.2);
+  border-color: var(--accent);
+}
+
+#conversation-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.conversation-item {
+  padding: 7px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: all var(--transition-fast);
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.conversation-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.conversation-item.active {
+  background: var(--bg-active);
+  color: var(--text-primary);
 }
 
 /* ─── Transcript Container ─────────────────────────────── */

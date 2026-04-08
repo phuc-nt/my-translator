@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>My Translator</title>
+  <title>MyJavis</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
@@ -17,6 +17,14 @@
     <!-- Drag Region (title bar area) -->
     <div id="drag-region" data-tauri-drag-region>
       <div class="control-bar" data-tauri-drag-region>
+        <button id="btn-toggle-sidebar" class="icon-btn" title="Toggle sidebar (conversations)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
+
         <button id="btn-settings" class="icon-btn" title="Settings">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3" />
@@ -128,6 +136,13 @@
           </svg>
         </button>
 
+        <button id="btn-end" class="icon-btn" title="End session — save &amp; close" style="display:none">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+
         <button id="btn-close" class="icon-btn close-btn" title="Close">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <line x1="18" y1="6" x2="6" y2="18" />
@@ -137,18 +152,25 @@
       </div>
     </div>
 
-    <!-- Transcript Area -->
-    <div id="transcript-container" data-tauri-drag-region>
-      <div id="transcript-content" data-tauri-drag-region>
-        <div class="transcript-placeholder">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-            opacity="0.4">
-            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-            <line x1="12" y1="19" x2="12" y2="23" />
-            <line x1="8" y1="23" x2="16" y2="23" />
-          </svg>
-          <p>Press ▶ to start translating</p>
+    <!-- Content Area: sidebar + transcript side by side -->
+    <div id="content-area">
+      <div id="sidebar" class="sidebar hidden">
+        <button id="btn-new-conversation">+ New</button>
+        <ul id="conversation-list"></ul>
+      </div>
+
+      <div id="transcript-container" data-tauri-drag-region>
+        <div id="transcript-content" data-tauri-drag-region>
+          <div class="transcript-placeholder">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+              opacity="0.4">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+              <line x1="12" y1="19" x2="12" y2="23" />
+              <line x1="8" y1="23" x2="16" y2="23" />
+            </svg>
+            <p>Press ▶ to start translating</p>
+          </div>
         </div>
       </div>
     </div>
@@ -617,7 +639,7 @@
       <div class="settings-tab-content" id="tab-about">
         <div class="settings-section about-info">
           <div class="about-app-header">
-            <span class="about-app-name">My Translator</span>
+            <span class="about-app-name">MyJavis</span>
             <span class="about-app-version" id="about-version">v0.5.0</span>
           </div>
           <p class="hint">Real-time speech translator for macOS & Windows</p>
