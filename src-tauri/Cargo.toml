@@ -1,12 +1,12 @@
 [package]
-name = "my-translator"
+name = "myjavis"
 version = "0.5.1"
 description = "Personal Real-time Speech Translator"
 authors = ["phucnt"]
 edition = "2021"
 
 [lib]
-name = "my_translator_lib"
+name = "myjavis_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -45,6 +45,7 @@ windows = { version = "0.58", features = [
   "Win32_System_Variant",
   "Win32_Foundation",
 ] }
+windows-core = "0.58"
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-updater = "2.10.0"
