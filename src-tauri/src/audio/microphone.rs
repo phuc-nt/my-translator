@@ -166,6 +166,7 @@ impl MicCapture {
         self._stream = None;
     }
 
+    #[allow(dead_code)]
     pub fn is_capturing(&self) -> bool {
         self.is_capturing.load(Ordering::SeqCst)
     }

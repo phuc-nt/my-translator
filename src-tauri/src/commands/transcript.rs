@@ -75,7 +75,7 @@ pub fn list_transcripts(app: AppHandle) -> Result<Vec<TranscriptEntry>, String> 
             let path = entry.path().to_string_lossy().to_string();
             let size_bytes = entry.metadata().ok()?.len();
             // Parse created_at from filename: YYYY-MM-DD_HH-MM-SS.md
-            let created_at = filename
+            let _created_at = filename
                 .strip_suffix(".md")
                 .unwrap_or(&filename)
                 .replace('_', " ")

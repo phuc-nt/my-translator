@@ -58,6 +58,7 @@ impl SystemAudioCapture {
         self.is_capturing.store(false, Ordering::SeqCst);
     }
 
+    #[allow(dead_code)]
     pub fn is_capturing(&self) -> bool {
         self.is_capturing.load(Ordering::SeqCst)
     }
