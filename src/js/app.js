@@ -35,6 +35,7 @@ class App {
         this.isCompact = false;   // Compact mode (hide control bar)
         this.sidebarOpen = false; // Sidebar toggle state (always starts closed)
         this.sessionActive = false;    // true between _createNewSession() and _endSession()
+        this.readOnlyMode = false;     // true when viewing a past conversation
     }
 
     async init() {
@@ -82,6 +83,9 @@ class App {
         // Check for updates (non-blocking)
         this._initAboutTab();
         this._checkForUpdates();
+
+        // Load sidebar conversation list
+        this._loadConversationList();
 
         console.log('🌐 MyJavis v0.5.0 initialized');
     }
@@ -1382,13 +1386,18 @@ class App {
     }
 
     _createNewSession() {
+        this.readOnlyMode = false;
         this.sessionActive = true;
         this.sessionStartTime = null;
         this.recordingStartTime = null;
-        this._updateEndButtonVisibility();
+        this._updateControlsForMode();
 
         this.transcriptUI.clear();
         this.transcriptUI.showPlaceholder();
+
+        document.querySelectorAll('#conversation-list .conversation-item').forEach(el => {
+            el.classList.remove('active');
+        });
     }
 
     async _endSession() {
@@ -1402,7 +1411,8 @@ class App {
         this.sessionStartTime = null;
         this.recordingStartTime = null;
         this.sessionActive = false;
-        this._updateEndButtonVisibility();
+        this.readOnlyMode = false;
+        this._updateControlsForMode();
 
         this.transcriptUI.clear();
         this.transcriptUI.showPlaceholder();
@@ -1423,8 +1433,22 @@ class App {
     }
 
     _updateEndButtonVisibility() {
-        const btn = document.getElementById('btn-end');
-        btn.style.display = this.sessionActive ? 'flex' : 'none';
+        this._updateControlsForMode();
+    }
+
+    _updateControlsForMode() {
+        const btnStart = document.getElementById('btn-start');
+        if (this.readOnlyMode) {
+            btnStart.disabled = true;
+            btnStart.style.opacity = '0.35';
+            btnStart.style.pointerEvents = 'none';
+        } else {
+            btnStart.disabled = false;
+            btnStart.style.opacity = '';
+            btnStart.style.pointerEvents = '';
+        }
+        const btnEnd = document.getElementById('btn-end');
+        btnEnd.style.display = (this.sessionActive && !this.readOnlyMode) ? 'flex' : 'none';
     }
 
     // ─── Transcript Persistence ───────────────────────────────
@@ -1658,6 +1682,49 @@ class App {
             if (content) content.textContent = text;
         } catch (err) {
             if (content) content.textContent = `Error loading session: ${err}`;
+        }
+    }
+
+    async _openConversationReadOnly(filename) {
+        this.readOnlyMode = true;
+        this._updateControlsForMode();
+
+        document.querySelectorAll('#conversation-list .conversation-item').forEach(el => {
+            el.classList.toggle('active', el.dataset.filename === filename);
+        });
+
+        const contentEl = document.getElementById('transcript-content');
+        if (contentEl) contentEl.textContent = 'Loading...';
+
+        try {
+            const text = await invoke('read_transcript', { filename });
+            if (contentEl) contentEl.textContent = text;
+        } catch (err) {
+            if (contentEl) contentEl.textContent = `Error loading: ${err}`;
+        }
+    }
+
+    async _loadConversationList() {
+        const listEl = document.getElementById('conversation-list');
+        if (!listEl) return;
+
+        try {
+            const sessions = await invoke('list_transcripts');
+            listEl.innerHTML = '';
+
+            sessions.forEach(s => {
+                const meta = this._parseSessionMeta(s);
+                const li = document.createElement('li');
+                li.className = 'conversation-item';
+                li.dataset.filename = s.filename;
+                li.textContent = `🗨 ${meta.date} ${meta.time}`;
+                li.addEventListener('click', () => {
+                    this._openConversationReadOnly(s.filename);
+                });
+                listEl.appendChild(li);
+            });
+        } catch (err) {
+            console.error('[Sidebar] Failed to load conversations:', err);
         }
     }
 
