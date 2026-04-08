@@ -34,6 +34,7 @@ class App {
         this.isPinned = true;     // Always-on-top state
         this.isCompact = false;   // Compact mode (hide control bar)
         this.sidebarOpen = false; // Sidebar toggle state (always starts closed)
+        this.sessionActive = false;    // true between _createNewSession() and _endSession()
     }
 
     async init() {
@@ -120,6 +121,16 @@ class App {
             this._toggleSidebar();
         });
 
+        // New conversation
+        document.getElementById('btn-new-conversation').addEventListener('click', () => {
+            this._createNewSession();
+        });
+
+        // End session — save + reset
+        document.getElementById('btn-end').addEventListener('click', async () => {
+            await this._endSession();
+        });
+
         // Settings button
         document.getElementById('btn-settings').addEventListener('click', () => {
             this._showView('settings');
@@ -202,9 +213,12 @@ class App {
             if (this.isStarting) return; // Prevent re-entry
             try {
                 if (this.isRunning) {
-                    await this.stop();
+                    await this._stopCapture();
                 } else {
                     this.isStarting = true;
+                    if (!this.sessionActive) {
+                        this._createNewSession();
+                    }
                     await this.start();
                 }
             } catch (err) {
@@ -1323,11 +1337,11 @@ class App {
         });
     }
 
-    async stop() {
+    async _stopCapture() {
+        if (!this.isRunning) return;
         this.isRunning = false;
         this._updateStartButton();
 
-        // Stop audio capture
         try {
             await invoke('stop_capture');
         } catch (err) {
@@ -1335,7 +1349,6 @@ class App {
         }
 
         if (this.translationMode === 'local') {
-            // Stop local pipeline
             try {
                 await invoke('stop_local_pipeline');
             } catch (err) {
@@ -1345,18 +1358,18 @@ class App {
             this.transcriptUI.removeStatusMessage();
             this._updateStatus('disconnected');
         } else {
-            // Disconnect Soniox
             sonioxClient.disconnect();
         }
 
-        // Keep transcript visible — don't clear
         this.transcriptUI.clearProvisional();
 
-        // Stop TTS
         elevenLabsTTS.disconnect();
         edgeTTSRust.disconnect();
-
         audioPlayer.stop();
+    }
+
+    async stop() {
+        await this._stopCapture();
 
         // Auto-save on stop — use full sessionLog (not trimmed display buffer)
         if (this.transcriptUI.hasSessionContent()) {
@@ -1368,6 +1381,37 @@ class App {
         this.sessionStartTime = null;
     }
 
+    _createNewSession() {
+        this.sessionActive = true;
+        this.sessionStartTime = null;
+        this.recordingStartTime = null;
+        this._updateEndButtonVisibility();
+
+        this.transcriptUI.clear();
+        this.transcriptUI.showPlaceholder();
+    }
+
+    async _endSession() {
+        await this._stopCapture();
+
+        if (this.transcriptUI.hasSessionContent()) {
+            await this._saveTranscriptFile();
+            this.transcriptUI.clearSession();
+        }
+
+        this.sessionStartTime = null;
+        this.recordingStartTime = null;
+        this.sessionActive = false;
+        this._updateEndButtonVisibility();
+
+        this.transcriptUI.clear();
+        this.transcriptUI.showPlaceholder();
+
+        if (typeof this._loadConversationList === 'function') {
+            await this._loadConversationList();
+        }
+    }
+
     _updateStartButton() {
         const btn = document.getElementById('btn-start');
         const iconPlay = document.getElementById('icon-play');
@@ -1376,6 +1420,11 @@ class App {
         btn.classList.toggle('recording', this.isRunning);
         iconPlay.style.display = this.isRunning ? 'none' : 'block';
         iconStop.style.display = this.isRunning ? 'block' : 'none';
+    }
+
+    _updateEndButtonVisibility() {
+        const btn = document.getElementById('btn-end');
+        btn.style.display = this.sessionActive ? 'flex' : 'none';
     }
 
     // ─── Transcript Persistence ───────────────────────────────
