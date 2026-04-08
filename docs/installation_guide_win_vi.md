@@ -1,6 +1,6 @@
 # Hướng dẫn cài đặt — Windows
 
-Hướng dẫn từng bước cài đặt và sử dụng **My Translator** trên Windows 10/11.
+Hướng dẫn từng bước cài đặt và sử dụng **MyJavis** trên Windows 10/11.
 
 ---
 
@@ -44,7 +44,7 @@ Trình cài đặt sẽ hướng dẫn bạn:
 
 1. Nhấn **Next** để bắt đầu
 
-![Welcome to My Translator Setup](user_manual_win/mytrans_win_03.png)
+![Welcome to MyJavis Setup](user_manual_win/mytrans_win_03.png)
 
 2. Chọn thư mục cài đặt (để mặc định là được) → nhấn **Next**
 
@@ -54,9 +54,9 @@ Trình cài đặt sẽ hướng dẫn bạn:
 
 ![Cài đặt hoàn tất](user_manual_win/mytrans_win_05.png)
 
-4. Tích **"Run My Translator"** → nhấn **Finish**
+4. Tích **"Run MyJavis"** → nhấn **Finish**
 
-![Hoàn thành — Chạy My Translator](user_manual_win/mytrans_win_06.png)
+![Hoàn thành — Chạy MyJavis](user_manual_win/mytrans_win_06.png)
 
 ---
 
@@ -171,7 +171,7 @@ Nếu TTS đã bật, bạn có thể bật/tắt bằng nút **TTS** hoặc `Ct
 
 ## Cập nhật
 
-My Translator có tính năng **tự động cập nhật**. Khi có bản mới:
+MyJavis có tính năng **tự động cập nhật**. Khi có bản mới:
 
 1. **Badge xanh** xuất hiện trên icon ⚙️ Settings
 2. Mở Settings → tab **About** → bấm **Download & Install**

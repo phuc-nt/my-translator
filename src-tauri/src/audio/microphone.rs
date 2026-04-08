@@ -1,30 +1,32 @@
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread::JoinHandle;
 
 use super::TARGET_SAMPLE_RATE;
+
+#[cfg(windows)]
+use windows::Win32::Media::Audio::{
+    IAudioCaptureClient, IAudioClient, IMMDeviceEnumerator, MMDeviceEnumerator, AUDCLNT_BUFFERFLAGS_SILENT,
+    AUDCLNT_SHAREMODE_SHARED, eCapture, eConsole,
+};
+#[cfg(windows)]
+use windows::Win32::System::Com::{
+    CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_MULTITHREADED,
+};
 
 /// Microphone capture using cpal.
 /// Captures from the default input device and converts to PCM s16le 16kHz mono.
 pub struct MicCapture {
     is_capturing: Arc<AtomicBool>,
-    /// We store the stream here to keep it alive.
-    /// cpal::Stream is !Send, so can't move to another thread.
-    /// Using Box<dyn StreamTrait> to erase the concrete type.
-    _stream: Option<cpal::Stream>,
+    worker: Option<JoinHandle<()>>,
 }
-
-// SAFETY: MicCapture is only accessed through Mutex in AudioState,
-// so concurrent access is properly synchronized. The cpal::Stream
-// is created and dropped on the same thread (main thread via Tauri command).
-unsafe impl Send for MicCapture {}
 
 impl MicCapture {
     pub fn new() -> Self {
         Self {
             is_capturing: Arc::new(AtomicBool::new(false)),
-            _stream: None,
+            worker: None,
         }
     }
 
@@ -35,135 +37,169 @@ impl MicCapture {
             return Err("Already capturing".to_string());
         }
 
-        let host = cpal::default_host();
-
-        // List available input devices for debugging
-        let input_devices: Vec<String> = host.input_devices()
-            .map(|devs| devs.filter_map(|d| d.name().ok()).collect())
-            .unwrap_or_default();
-        println!("[Mic] Available input devices: {:?}", input_devices);
-
-        if input_devices.is_empty() {
-            return Err("No microphone found. Connect an external microphone or headset.".to_string());
-        }
-
-        let device = host
-            .default_input_device()
-            .ok_or("No default microphone found. Connect an external microphone or headset.")?;
-
-        println!("[Mic] Device: {:?}", device.name().unwrap_or_default());
-
-        // Try default config first, fallback to supported configs
-        let default_config = device.default_input_config()
-            .or_else(|e| {
-                println!("[Mic] default_input_config failed: {}, trying supported configs", e);
-                // Fallback: find a supported config
-                let mut configs = device.supported_input_configs()
-                    .map_err(|e2| format!("No supported input configs: {}", e2))?;
-                // Prefer F32, then I16
-                configs
-                    .find(|c| c.sample_format() == cpal::SampleFormat::F32)
-                    .or_else(|| {
-                        device.supported_input_configs().ok()
-                            .and_then(|mut c| c.next())
-                    })
-                    .map(|c| {
-                        // Pick sample rate: prefer 48kHz, else max
-                        let rate = if c.min_sample_rate().0 <= 48000 && c.max_sample_rate().0 >= 48000 {
-                            cpal::SampleRate(48000)
-                        } else {
-                            c.max_sample_rate()
-                        };
-                        c.with_sample_rate(rate)
-                    })
-                    .ok_or_else(|| format!("No suitable input config found (original: {})", e))
-            })
-            .map_err(|e| format!("Failed to get default input config: {}", e))?;
-
-        println!("[Mic] Config: rate={}, channels={}, format={:?}",
-            default_config.sample_rate().0,
-            default_config.channels(),
-            default_config.sample_format());
-
-        let source_sample_rate = default_config.sample_rate().0;
-        let source_channels = default_config.channels() as usize;
-
         let (sender, receiver) = mpsc::channel::<Vec<u8>>();
         self.is_capturing.store(true, Ordering::SeqCst);
         let is_capturing = self.is_capturing.clone();
 
-        // Build the input config targeting our desired format
-        let stream_config = cpal::StreamConfig {
-            channels: default_config.channels(),
-            sample_rate: default_config.sample_rate(),
-            buffer_size: cpal::BufferSize::Default,
-        };
+        // Handshake channel so we can return errors from the worker thread.
+        let (ready_tx, ready_rx) = mpsc::sync_channel::<Result<(), String>>(1);
 
-        let target_rate = TARGET_SAMPLE_RATE;
-        let err_fn = |err| eprintln!("Microphone input error: {}", err);
+        let worker = std::thread::spawn(move || {
+            let result: Result<(), String> = (|| {
+                #[cfg(windows)]
+                {
+                    unsafe {
+                        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
 
-        let stream = match default_config.sample_format() {
-            cpal::SampleFormat::F32 => {
-                device.build_input_stream(
-                    &stream_config,
-                    move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                        if !is_capturing.load(Ordering::SeqCst) {
-                            return;
-                        }
-                        let pcm = convert_f32_to_pcm_s16le(
-                            data,
-                            source_channels,
-                            source_sample_rate,
-                            target_rate,
+                        println!("[Mic] Starting WASAPI microphone capture...");
+
+                        let enumerator: IMMDeviceEnumerator = CoCreateInstance(
+                            &MMDeviceEnumerator,
+                            None,
+                            CLSCTX_ALL,
+                        )
+                        .map_err(|e| format!("Failed to create device enumerator: {}", e))?;
+
+                        let device = enumerator
+                            .GetDefaultAudioEndpoint(eCapture, eConsole)
+                            .map_err(|e| format!("Failed to get default capture endpoint: {}", e))?;
+
+                        let audio_client: IAudioClient = device
+                            .Activate(CLSCTX_ALL, None)
+                            .map_err(|e| format!("Failed to activate audio client: {}", e))?;
+
+                        let mix_format_ptr = audio_client
+                            .GetMixFormat()
+                            .map_err(|e| format!("GetMixFormat failed: {}", e))?;
+                        let mix_format = &*mix_format_ptr;
+
+                        let source_rate = mix_format.nSamplesPerSec;
+                        let source_channels = mix_format.nChannels as u32;
+                        let bits_per_sample = mix_format.wBitsPerSample;
+
+                        println!(
+                            "[Mic] Mix format: rate={}, channels={}, bits={}",
+                            source_rate, source_channels, bits_per_sample
                         );
-                        if !pcm.is_empty() {
-                            let _ = sender.send(pcm);
+
+                        println!("[Mic] Initializing audio client...");
+                        audio_client
+                            .Initialize(
+                                AUDCLNT_SHAREMODE_SHARED,
+                                0,
+                                10_000_000, // 1 second buffer in 100ns units
+                                0,
+                                mix_format_ptr,
+                                None,
+                            )
+                            .map_err(|e| format!("AudioClient Initialize failed: {}", e))?;
+                        println!("[Mic] Audio client initialized.");
+
+                        let capture_client: IAudioCaptureClient = audio_client
+                            .GetService()
+                            .map_err(|e| format!("Failed to get capture client: {}", e))?;
+
+                        println!("[Mic] Starting audio client...");
+                        audio_client
+                            .Start()
+                            .map_err(|e| format!("Failed to start audio client: {}", e))?;
+                        println!("[Mic] Audio client started.");
+
+                        // Signal readiness only after capture starts.
+                        let _ = ready_tx.send(Ok(()));
+
+                        while is_capturing.load(Ordering::SeqCst) {
+                            std::thread::sleep(std::time::Duration::from_millis(10));
+
+                            let packet_size = match capture_client.GetNextPacketSize() {
+                                Ok(size) => size,
+                                Err(_) => continue,
+                            };
+                            if packet_size == 0 {
+                                continue;
+                            }
+
+                            let mut buffer_ptr = std::ptr::null_mut();
+                            let mut num_frames = 0u32;
+                            let mut flags = 0u32;
+
+                            if capture_client
+                                .GetBuffer(
+                                    &mut buffer_ptr,
+                                    &mut num_frames,
+                                    &mut flags,
+                                    None,
+                                    None,
+                                )
+                                .is_err()
+                            {
+                                continue;
+                            }
+
+                            if num_frames > 0 && !buffer_ptr.is_null() {
+                                let is_silent =
+                                    (flags & (AUDCLNT_BUFFERFLAGS_SILENT.0 as u32)) != 0;
+                                if !is_silent {
+                                    let pcm = convert_wasapi_mic_to_pcm_s16_16k(
+                                        buffer_ptr,
+                                        num_frames,
+                                        source_rate,
+                                        source_channels,
+                                        bits_per_sample,
+                                    );
+                                    if !pcm.is_empty() {
+                                        let _ = sender.send(pcm);
+                                    }
+                                }
+                            }
+
+                            let _ = capture_client.ReleaseBuffer(num_frames);
                         }
-                    },
-                    err_fn,
-                    None,
-                )
+
+                        let _ = audio_client.Stop();
+                        CoUninitialize();
+
+                        Ok(())
+                    }
+                }
+
+                #[cfg(not(windows))]
+                {
+                    let _ = ready_tx.send(Err("Microphone capture not implemented on this OS".to_string()));
+                    Err("Microphone capture not implemented on this OS".to_string())
+                }
+            })();
+
+            // If we failed before signalling readiness, propagate the error once.
+            if let Err(e) = result {
+                let _ = ready_tx.send(Err(e));
             }
-            cpal::SampleFormat::I16 => {
-                let is_capturing = self.is_capturing.clone();
-                device.build_input_stream(
-                    &stream_config,
-                    move |data: &[i16], _: &cpal::InputCallbackInfo| {
-                        if !is_capturing.load(Ordering::SeqCst) {
-                            return;
-                        }
-                        let pcm = convert_i16_to_pcm_s16le(
-                            data,
-                            source_channels,
-                            source_sample_rate,
-                            target_rate,
-                        );
-                        if !pcm.is_empty() {
-                            let _ = sender.send(pcm);
-                        }
-                    },
-                    err_fn,
-                    None,
-                )
+        });
+
+        self.worker = Some(worker);
+
+        match ready_rx.recv() {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => {
+                self.is_capturing.store(false, Ordering::SeqCst);
+                self.worker.take().map(|h| h.join());
+                return Err(e);
             }
-            format => {
-                return Err(format!("Unsupported sample format: {:?}", format));
+            Err(e) => {
+                self.is_capturing.store(false, Ordering::SeqCst);
+                self.worker.take().map(|h| h.join());
+                return Err(format!("Microphone worker failed to start: {}", e));
             }
         }
-        .map_err(|e| format!("Failed to build input stream: {}", e))?;
-
-        stream.play().map_err(|e| format!("Failed to start mic stream: {}", e))?;
-
-        // Store stream to keep it alive
-        self._stream = Some(stream);
 
         Ok(receiver)
     }
 
     pub fn stop(&mut self) {
         self.is_capturing.store(false, Ordering::SeqCst);
-        // Drop the stream to stop capturing
-        self._stream = None;
+        if let Some(handle) = self.worker.take() {
+            let _ = handle.join();
+        }
     }
 
     #[allow(dead_code)]
@@ -180,6 +216,7 @@ impl Default for MicCapture {
 
 
 /// Convert f32 audio to PCM s16le, with mono mixdown and resampling
+#[cfg(not(windows))]
 fn convert_f32_to_pcm_s16le(
     data: &[f32],
     channels: usize,
@@ -214,6 +251,7 @@ fn convert_f32_to_pcm_s16le(
 }
 
 /// Convert i16 audio to PCM s16le, with mono mixdown and resampling
+#[cfg(not(windows))]
 fn convert_i16_to_pcm_s16le(
     data: &[i16],
     channels: usize,
@@ -276,4 +314,55 @@ fn simple_resample(samples: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
     }
 
     output
+}
+
+#[cfg(windows)]
+unsafe fn convert_wasapi_mic_to_pcm_s16_16k(
+    buffer_ptr: *mut u8,
+    num_frames: u32,
+    source_rate: u32,
+    source_channels: u32,
+    bits_per_sample: u16,
+) -> Vec<u8> {
+    let frame_count = num_frames as usize;
+    let channels = source_channels.max(1) as usize;
+
+    // Mix to mono as f32
+    let mono_f32: Vec<f32> = match bits_per_sample {
+        16 => {
+            let ptr = buffer_ptr as *const i16;
+            let samples = std::slice::from_raw_parts(ptr, frame_count * channels);
+            samples
+                .chunks(channels)
+                .map(|frame| {
+                    let sum: f32 = frame.iter().map(|&s| s as f32).sum();
+                    sum / (channels as f32 * 32768.0)
+                })
+                .collect()
+        }
+        32 => {
+            let ptr = buffer_ptr as *const f32;
+            let samples = std::slice::from_raw_parts(ptr, frame_count * channels);
+            samples
+                .chunks(channels)
+                .map(|frame| frame.iter().copied().sum::<f32>() / channels as f32)
+                .collect()
+        }
+        _ => return Vec::new(),
+    };
+
+    let resampled = if source_rate != TARGET_SAMPLE_RATE {
+        simple_resample(&mono_f32, source_rate, TARGET_SAMPLE_RATE)
+    } else {
+        mono_f32
+    };
+
+    resampled
+        .iter()
+        .flat_map(|&s| {
+            let clamped = s.clamp(-1.0, 1.0);
+            let s16 = (clamped * 32767.0) as i16;
+            s16.to_le_bytes()
+        })
+        .collect()
 }

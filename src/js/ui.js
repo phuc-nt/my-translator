@@ -16,7 +16,7 @@ export class TranscriptUI {
         this.contentEl = null;
         this.maxChars = 1200;
         this.fontSize = 16;
-        this.viewMode = 'single'; // 'single' or 'dual'
+        this.viewMode = 'subtitle'; // 'single' | 'dual' | 'subtitle'
 
         // Segments: each has { original, translation, status, speaker, language, confidence }
         this.segments = [];
@@ -48,6 +48,9 @@ export class TranscriptUI {
             const overlay = document.getElementById('overlay-view');
             if (overlay) {
                 overlay.classList.toggle('dual-view', viewMode === 'dual');
+                if (viewMode !== 'dual') {
+                    overlay.classList.remove('dual-view');
+                }
             }
             this._render();
         }
@@ -111,6 +114,25 @@ export class TranscriptUI {
             this.segments.push(newSeg);
             this.sessionLog.push({ ...newSeg });
         }
+        this._render();
+    }
+
+    /**
+     * Add a chat message (UI-only) into subtitle timeline
+     */
+    addChatMessage(text, who = 'ME') {
+        this._removeListening();
+        const seg = {
+            original: text,
+            translation: null,
+            status: 'chat',
+            speaker: who,
+            language: null,
+            confidence: null,
+            createdAt: Date.now(),
+        };
+        this.segments.push(seg);
+        this.sessionLog.push({ ...seg });
         this._render();
     }
 
@@ -319,6 +341,20 @@ export class TranscriptUI {
         this.sessionLog = [];
     }
 
+    loadSegments(segments, { replaceSessionLog = true } = {}) {
+        this._removeListening();
+        this._ensureContent();
+        this.segments = Array.isArray(segments) ? segments : [];
+        if (replaceSessionLog) this.sessionLog = this.segments.map(s => ({ ...s }));
+        this.provisionalText = '';
+        this.provisionalSpeaker = null;
+        this.provisionalLanguage = null;
+        this.currentSpeaker = null;
+        this.currentLanguage = null;
+        this.lastConfidence = null;
+        this._render();
+    }
+
     /**
      * Clear display buffer only (segments array).
      * sessionLog is NOT cleared — use clearSession() explicitly.
@@ -364,9 +400,148 @@ export class TranscriptUI {
 
         if (this.viewMode === 'dual') {
             this._renderDual();
+        } else if (this.viewMode === 'subtitle') {
+            this._renderSubtitle();
         } else {
             this._renderSingle();
         }
+    }
+
+    _renderSubtitle() {
+        // Subtitle timeline: render multiple bilingual blocks, but merge tiny fragments
+        // into fuller sentence-like chunks (movie-style pacing, not one global 2-line block).
+
+        const isStrongBoundary = (text) => /[.!?]\s*$/.test(text);
+        const isWeakBoundary = (text) => /[,;:]\s*$/.test(text);
+        const cleanJoin = (parts) => parts.join(' ').replace(/\s+/g, ' ').trim();
+
+        const translated = this.segments.filter(s => s.status === 'translated' && s.translation);
+        const pendingOriginals = this.segments.filter(s => s.status === 'original' && s.original);
+        const chatSegs = this.segments.filter(s => s.status === 'chat' && s.original);
+
+        const chunks = [];
+        let enBuf = [];
+        let viBuf = [];
+        let lastMeta = null; // keep last seg meta for labels
+        let currentSpeaker = null;
+
+        const flush = () => {
+            const en = cleanJoin(enBuf.filter(Boolean));
+            const vi = cleanJoin(viBuf.filter(Boolean));
+            if (en || vi) {
+                chunks.push({
+                    en,
+                    vi,
+                    meta: lastMeta,
+                    speaker: currentSpeaker,
+                });
+            }
+            enBuf = [];
+            viBuf = [];
+        };
+
+        // Iterate in original order but only handle translated + chat
+        const ordered = this.segments.filter(s =>
+            (s.status === 'translated' && s.translation) || (s.status === 'chat' && s.original)
+        );
+
+        for (const seg of ordered) {
+            if (seg.status === 'chat') {
+                // Flush any pending bilingual buffer before rendering chat bubble
+                flush();
+                chunks.push({
+                    en: seg.original.trim(),
+                    vi: '',
+                    meta: seg,
+                    speaker: seg.speaker || 'ME',
+                    kind: 'chat',
+                });
+                continue;
+            }
+
+            // Speaker change -> start a new subtitle chunk
+            const segSpeaker = seg.speaker || null;
+            if (currentSpeaker === null) {
+                currentSpeaker = segSpeaker;
+            } else if (segSpeaker !== currentSpeaker) {
+                flush();
+                currentSpeaker = segSpeaker;
+            }
+
+            const en = (seg.original || '').trim();
+            const vi = (seg.translation || '').trim();
+            if (en) enBuf.push(en);
+            if (vi) viBuf.push(vi);
+            lastMeta = seg;
+
+            const enLine = cleanJoin(enBuf);
+            const viLine = cleanJoin(viBuf);
+
+            const tooLong = enLine.length >= 90 || viLine.length >= 110;
+            const bigEnough = enLine.length >= 55 || viLine.length >= 70;
+            const veryBig = enLine.length >= 75 || viLine.length >= 95;
+
+            // Only break on punctuation if we already have a reasonably-sized chunk,
+            // otherwise keep accumulating to avoid tiny subtitle fragments.
+            const shouldBreak =
+                tooLong ||
+                ((isStrongBoundary(en) || isStrongBoundary(vi)) && bigEnough) ||
+                ((isWeakBoundary(en) || isWeakBoundary(vi)) && veryBig);
+
+            if (shouldBreak) flush();
+        }
+        flush();
+
+        // Keep only the newest few chunks (like subtitles)
+        const MAX_CHUNKS = 8;
+        const recent = chunks.slice(-MAX_CHUNKS);
+
+        // Append a pending block at bottom (EN only + VI ellipsis)
+        let pendingEn = '';
+        let pendingSpeaker = null;
+        if (pendingOriginals.length > 0) {
+            pendingEn = cleanJoin(pendingOriginals.slice(-2).map(s => s.original.trim()));
+            pendingSpeaker = pendingOriginals[pendingOriginals.length - 1]?.speaker || null;
+        } else if (this.provisionalText) {
+            pendingEn = this.provisionalText.trim();
+            pendingSpeaker = this.provisionalSpeaker || null;
+        }
+
+        let html = '';
+        let lastRenderedSpeaker = null;
+
+        for (const c of recent) {
+            if (c.kind === 'chat') {
+                html += `<div class="subtitle-chat me">
+                    <div class="subtitle-chat-who">${this._esc(c.speaker || 'ME')}:</div>
+                    <div class="subtitle-chat-text">${this._esc(c.en)}</div>
+                </div>`;
+                continue;
+            }
+
+            if (c.speaker && c.speaker !== lastRenderedSpeaker) {
+                html += `<div class="subtitle-speaker">Speaker ${this._esc(c.speaker)}:</div>`;
+                lastRenderedSpeaker = c.speaker;
+            }
+            html += `<div class="subtitle-pair">
+                <div class="subtitle-top"><span class="subtitle-prefix">EN:</span> ${this._esc(c.en)}</div>
+                <div class="subtitle-bottom"><span class="subtitle-prefix">VI:</span> ${this._esc(c.vi)}</div>
+            </div>`;
+        }
+
+        if (pendingEn) {
+            if (pendingSpeaker && pendingSpeaker !== lastRenderedSpeaker) {
+                html += `<div class="subtitle-speaker">Speaker ${this._esc(pendingSpeaker)}:</div>`;
+                lastRenderedSpeaker = pendingSpeaker;
+            }
+            html += `<div class="subtitle-pair pending">
+                <div class="subtitle-top"><span class="subtitle-prefix">EN:</span> ${this._esc(pendingEn)}</div>
+                <div class="subtitle-bottom"><span class="subtitle-prefix">VI:</span> …</div>
+            </div>`;
+        }
+
+        this.contentEl.innerHTML = html;
+        this._smartScroll(this.container.parentElement || this.container);
     }
 
     _renderSingle() {
@@ -412,8 +587,8 @@ export class TranscriptUI {
 
     _renderDual() {
         // Save scroll state before re-render
-        const oldSrcPanel = this.contentEl.querySelector('.panel-source');
-        const oldTgtPanel = this.contentEl.querySelector('.panel-translation');
+        const oldSrcPanel = this.contentEl.querySelector('.panel-source .panel-body') || this.contentEl.querySelector('.panel-source');
+        const oldTgtPanel = this.contentEl.querySelector('.panel-translation .panel-body') || this.contentEl.querySelector('.panel-translation');
         const srcScrollState = oldSrcPanel ? this._getScrollState(oldSrcPanel) : { nearBottom: true, scrollTop: 0 };
         const tgtScrollState = oldTgtPanel ? this._getScrollState(oldTgtPanel) : { nearBottom: true, scrollTop: 0 };
 
@@ -455,25 +630,33 @@ export class TranscriptUI {
         }
 
         this.contentEl.innerHTML = `
-            <div class="panel-source">${srcHtml}</div>
-            <div class="panel-translation">${tgtHtml}</div>
+            <div class="panel-source">
+              <div class="panel-header">English</div>
+              <div class="panel-body">${srcHtml}</div>
+            </div>
+            <div class="panel-translation">
+              <div class="panel-header">Vietnamese</div>
+              <div class="panel-body">${tgtHtml}</div>
+            </div>
         `;
 
         // Restore scroll: auto-scroll if was near bottom, otherwise keep position
         const srcPanel = this.contentEl.querySelector('.panel-source');
         const tgtPanel = this.contentEl.querySelector('.panel-translation');
+        const srcBody = srcPanel?.querySelector('.panel-body');
+        const tgtBody = tgtPanel?.querySelector('.panel-body');
         if (srcPanel) {
             if (srcScrollState.nearBottom) {
-                srcPanel.scrollTop = srcPanel.scrollHeight;
+                if (srcBody) srcBody.scrollTop = srcBody.scrollHeight;
             } else {
-                srcPanel.scrollTop = srcScrollState.scrollTop;
+                if (srcBody) srcBody.scrollTop = srcScrollState.scrollTop;
             }
         }
         if (tgtPanel) {
             if (tgtScrollState.nearBottom) {
-                tgtPanel.scrollTop = tgtPanel.scrollHeight;
+                if (tgtBody) tgtBody.scrollTop = tgtBody.scrollHeight;
             } else {
-                tgtPanel.scrollTop = tgtScrollState.scrollTop;
+                if (tgtBody) tgtBody.scrollTop = tgtScrollState.scrollTop;
             }
         }
     }

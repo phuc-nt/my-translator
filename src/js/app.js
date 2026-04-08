@@ -32,10 +32,15 @@ class App {
         this.sessionMode = 'one_way';
         this.ttsEnabled = false;  // TTS runtime toggle
         this.isPinned = true;     // Always-on-top state
-        this.isCompact = false;   // Compact mode (hide control bar)
         this.sidebarOpen = false; // Sidebar toggle state (always starts closed)
         this.sessionActive = false;    // true between _createNewSession() and _endSession()
         this.readOnlyMode = false;     // true when viewing a past conversation
+        this.activeConversationFilename = null;
+
+        // Chat UI (UI-only) — input posts into subtitle timeline
+        this.currentTemplate = null; // 'Interview' | 'Meeting' | null
+        this._interviewCvFile = null;
+        this._interviewJdFile = null;
     }
 
     async init() {
@@ -130,8 +135,8 @@ class App {
             this._createNewSession();
         });
 
-        // End session — save + reset
-        document.getElementById('btn-end').addEventListener('click', async () => {
+        // End session (separate button next to Start/Stop)
+        document.getElementById('btn-end-session')?.addEventListener('click', async () => {
             await this._endSession();
         });
 
@@ -140,35 +145,11 @@ class App {
             this._showView('settings');
         });
 
-        // Sessions button
-        document.getElementById('btn-sessions').addEventListener('click', () => {
-            this._showView('sessions');
-        });
-
         // Back from settings
         document.getElementById('btn-back').addEventListener('click', () => {
             this._showView('overlay');
         });
 
-        // Back from sessions
-        document.getElementById('btn-sessions-back').addEventListener('click', () => {
-            this._showView('overlay');
-        });
-
-        // Back from session viewer to session list
-        document.getElementById('btn-session-back-to-list').addEventListener('click', () => {
-            document.getElementById('sessions-list-panel').style.display = '';
-            document.getElementById('session-viewer').style.display = 'none';
-        });
-
-        // Copy session content
-        document.getElementById('btn-session-copy').addEventListener('click', async () => {
-            const content = document.getElementById('session-viewer-content')?.textContent || '';
-            if (content) {
-                await navigator.clipboard.writeText(content);
-                this._showToast('Copied to clipboard', 'success');
-            }
-        });
 
         // Close button (overlay)
         document.getElementById('btn-close').addEventListener('click', async () => {
@@ -188,16 +169,6 @@ class App {
             this._togglePin();
         });
 
-        // Compact mode button
-        document.getElementById('btn-compact').addEventListener('click', () => {
-            this._toggleCompact();
-        });
-
-        // View mode toggle (dual panel)
-        document.getElementById('btn-view-mode').addEventListener('click', () => {
-            this._toggleViewMode();
-        });
-
         // Font size quick controls
         document.getElementById('btn-font-up').addEventListener('click', () => this._adjustFontSize(4));
         document.getElementById('btn-font-down').addEventListener('click', () => this._adjustFontSize(-4));
@@ -211,6 +182,9 @@ class App {
                 this.transcriptUI.configure({ fontColor: color });
             });
         });
+
+        this._initTemplateDropdown();
+        this._initInterviewUploads();
 
         // Start/Stop button
         document.getElementById('btn-start').addEventListener('click', async () => {
@@ -250,13 +224,6 @@ class App {
             this._setSource('both');
         });
 
-        // Clear button — clears display only (auto-save happens on stop)
-        document.getElementById('btn-clear').addEventListener('click', async () => {
-            this.transcriptUI.clear();
-            this.transcriptUI.showPlaceholder();
-            this.recordingStartTime = null;
-        });
-
         // Copy transcript button
         document.getElementById('btn-copy').addEventListener('click', async () => {
             const text = this.transcriptUI.getPlainText();
@@ -265,6 +232,14 @@ class App {
                 this._showToast('Copied to clipboard', 'success');
             } else {
                 this._showToast('Nothing to copy', 'info');
+            }
+        });
+
+        // Chat input: Enter sends, Shift+Enter newline
+        document.getElementById('chat-input')?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                this._sendChatMessage();
             }
         });
 
@@ -529,11 +504,6 @@ class App {
                 this._togglePin();
             }
 
-            // Cmd/Ctrl + D: Toggle Compact
-            if ((e.metaKey || e.ctrlKey) && e.key === 'd') {
-                e.preventDefault();
-                this._toggleCompact();
-            }
         });
     }
 
@@ -542,13 +512,9 @@ class App {
     _showView(view) {
         document.getElementById('overlay-view').classList.toggle('active', view === 'overlay');
         document.getElementById('settings-view').classList.toggle('active', view === 'settings');
-        document.getElementById('sessions-view').classList.toggle('active', view === 'sessions');
 
         if (view === 'settings') {
             this._populateSettingsForm();
-        }
-        if (view === 'sessions') {
-            this._showSessions();
         }
     }
 
@@ -744,6 +710,7 @@ class App {
                 maxLines: settings.max_lines || 5,
                 showOriginal: settings.show_original !== false,
                 fontSize: settings.font_size || 16,
+                viewMode: 'subtitle',
             });
         }
 
@@ -999,6 +966,7 @@ class App {
 
         this.isRunning = true;
         this._updateStartButton();
+        this._updateControlsForMode();
         if (!this.recordingStartTime) this.recordingStartTime = Date.now();
 
         // Record session metadata for auto-save
@@ -1345,6 +1313,7 @@ class App {
         if (!this.isRunning) return;
         this.isRunning = false;
         this._updateStartButton();
+        this._updateControlsForMode();
 
         try {
             await invoke('stop_capture');
@@ -1387,6 +1356,7 @@ class App {
 
     _createNewSession() {
         this.readOnlyMode = false;
+        this.activeConversationFilename = null;
         this.sessionActive = true;
         this.sessionStartTime = null;
         this.recordingStartTime = null;
@@ -1447,8 +1417,10 @@ class App {
             btnStart.style.opacity = '';
             btnStart.style.pointerEvents = '';
         }
-        const btnEnd = document.getElementById('btn-end');
-        btnEnd.style.display = (this.sessionActive && !this.readOnlyMode) ? 'flex' : 'none';
+        const btnEndSession = document.getElementById('btn-end-session');
+        const hasSessionContent = !!this.transcriptUI?.hasSessionContent?.();
+        const shouldShowEnd = !this.readOnlyMode && (this.sessionActive || this.isRunning || hasSessionContent);
+        if (btnEndSession) btnEndSession.style.display = shouldShowEnd ? 'flex' : 'none';
     }
 
     // ─── Transcript Persistence ───────────────────────────────
@@ -1583,28 +1555,6 @@ class App {
         sidebar.classList.toggle('hidden', !this.sidebarOpen);
     }
 
-    _toggleCompact() {
-        this.isCompact = !this.isCompact;
-        const dragRegion = document.getElementById('drag-region');
-        const overlay = document.getElementById('overlay-view');
-
-        if (this.isCompact) {
-            dragRegion.classList.add('compact-hidden');
-            overlay.classList.add('compact-mode');
-        } else {
-            dragRegion.classList.remove('compact-hidden');
-            overlay.classList.remove('compact-mode');
-        }
-    }
-
-    _toggleViewMode() {
-        const isDual = this.transcriptUI.viewMode === 'dual';
-        const newMode = isDual ? 'single' : 'dual';
-        this.transcriptUI.configure({ viewMode: newMode });
-        const btn = document.getElementById('btn-view-mode');
-        if (btn) btn.classList.toggle('active', newMode === 'dual');
-    }
-
     _adjustFontSize(delta) {
         const current = this.transcriptUI.fontSize || 16;
         const newSize = Math.max(12, Math.min(140, current + delta));
@@ -1625,66 +1575,6 @@ class App {
 
     // ─── Session History ───────────────────────────────────
 
-    async _showSessions() {
-        const listEl = document.getElementById('sessions-list');
-        const listPanel = document.getElementById('sessions-list-panel');
-        const viewer = document.getElementById('session-viewer');
-
-        if (listPanel) listPanel.style.display = '';
-        if (viewer) viewer.style.display = 'none';
-        if (!listEl) return;
-
-        listEl.innerHTML = '<div class="sessions-loading">Loading...</div>';
-
-        try {
-            const sessions = await invoke('list_transcripts');
-            if (sessions.length === 0) {
-                listEl.innerHTML = '<div class="sessions-empty">No saved sessions yet.</div>';
-                return;
-            }
-
-            listEl.innerHTML = sessions.map(s => {
-                const meta = this._parseSessionMeta(s);
-                return `<div class="session-item" data-filename="${this._escAttr(s.filename)}">
-                    <div class="session-item-date">${meta.date}</div>
-                    <div class="session-item-meta">
-                        <span class="session-item-time">${meta.time}</span>
-                        ${meta.duration ? `<span class="session-item-duration">${meta.duration}</span>` : ''}
-                        ${meta.langPair ? `<span class="session-item-langs">${meta.langPair}</span>` : ''}
-                    </div>
-                    <div class="session-item-size">${this._formatBytes(s.size_bytes)}</div>
-                </div>`;
-            }).join('');
-
-            listEl.querySelectorAll('.session-item').forEach(item => {
-                item.addEventListener('click', () => {
-                    this._openSession(item.dataset.filename);
-                });
-            });
-        } catch (err) {
-            listEl.innerHTML = `<div class="sessions-empty">Error: ${err}</div>`;
-        }
-    }
-
-    async _openSession(filename) {
-        const listPanel = document.getElementById('sessions-list-panel');
-        const viewer = document.getElementById('session-viewer');
-        const title = document.getElementById('session-viewer-title');
-        const content = document.getElementById('session-viewer-content');
-
-        if (listPanel) listPanel.style.display = 'none';
-        if (viewer) viewer.style.display = '';
-        if (title) title.textContent = filename.replace('.md', '').replace('_', ' ');
-        if (content) content.textContent = 'Loading...';
-
-        try {
-            const text = await invoke('read_transcript', { filename });
-            if (content) content.textContent = text;
-        } catch (err) {
-            if (content) content.textContent = `Error loading session: ${err}`;
-        }
-    }
-
     async _openConversationReadOnly(filename) {
         this.readOnlyMode = true;
         this._updateControlsForMode();
@@ -1693,15 +1583,106 @@ class App {
             el.classList.toggle('active', el.dataset.filename === filename);
         });
 
+        this.activeConversationFilename = filename;
+
         const contentEl = document.getElementById('transcript-content');
         if (contentEl) contentEl.textContent = 'Loading...';
 
         try {
             const text = await invoke('read_transcript', { filename });
-            if (contentEl) contentEl.textContent = text;
+            const segments = this._parseSavedTranscriptToSegments(text);
+            this.transcriptUI.configure({ viewMode: 'subtitle' });
+            this.transcriptUI.clear();
+            this.transcriptUI.loadSegments(segments, { replaceSessionLog: false });
+
+            if (!segments.length && contentEl) {
+                contentEl.textContent = 'No transcript content.';
+            }
         } catch (err) {
             if (contentEl) contentEl.textContent = `Error loading: ${err}`;
         }
+    }
+
+    _parseSavedTranscriptToSegments(text) {
+        const raw = String(text || '');
+        if (!raw.trim()) return [];
+
+        // Strip first YAML frontmatter block: --- ... ---
+        let body = raw;
+        if (body.startsWith('---')) {
+            const second = body.indexOf('\n---', 3);
+            if (second !== -1) {
+                const after = body.indexOf('\n', second + 1);
+                body = after !== -1 ? body.slice(after + 1) : '';
+            }
+        }
+
+        const lines = body.split(/\r?\n/);
+        const segments = [];
+
+        let currentSpeaker = null;
+        let pending = null; // { speaker, original, createdAt }
+
+        const speakerRe = /^\*\*Speaker\s+(.+?):\*\*\s*$/i;
+
+        const flushPendingIfAny = () => {
+            if (!pending) return;
+            segments.push({
+                original: pending.original || '',
+                translation: pending.translation || '',
+                status: 'translated',
+                speaker: pending.speaker,
+                language: null,
+                confidence: null,
+                createdAt: pending.createdAt,
+            });
+            pending = null;
+        };
+
+        for (let i = 0; i < lines.length; i++) {
+            const lineRaw = lines[i];
+            const line = (lineRaw || '').trim();
+            if (!line) continue;
+
+            const sp = line.match(speakerRe);
+            if (sp) {
+                const s = (sp[1] || '').trim();
+                currentSpeaker = s;
+                continue;
+            }
+
+            if (line.startsWith('>')) {
+                // If we already had a pending EN without a VI, flush it before starting a new one.
+                flushPendingIfAny();
+                const original = line.replace(/^>\s*/, '').trim();
+                pending = {
+                    speaker: currentSpeaker,
+                    original,
+                    translation: '',
+                    createdAt: Date.now() + segments.length,
+                };
+                continue;
+            }
+
+            // Treat as VI line if we have pending EN.
+            if (pending && !pending.translation) {
+                pending.translation = line;
+                flushPendingIfAny();
+            }
+        }
+
+        // Flush any trailing EN without VI
+        flushPendingIfAny();
+
+        // Normalize speaker values: if stored as "Speaker 1" accidentally, reduce to "1"
+        segments.forEach(s => {
+            if (typeof s.speaker === 'string') {
+                const m = s.speaker.match(/^Speaker\s+(.+)$/i);
+                if (m) s.speaker = m[1].trim();
+            }
+        });
+
+        return segments.filter(s => (s.original || s.translation));
     }
 
     async _loadConversationList() {
@@ -1717,7 +1698,30 @@ class App {
                 const li = document.createElement('li');
                 li.className = 'conversation-item';
                 li.dataset.filename = s.filename;
-                li.textContent = `🗨 ${meta.date} ${meta.time}`;
+                li.innerHTML = `
+                    <span class="conversation-label">🗨 ${meta.date} ${meta.time}</span>
+                    <button type="button" class="btn-remove-conversation" title="Delete conversation" aria-label="Delete conversation">×</button>
+                `;
+
+                const removeBtn = li.querySelector('.btn-remove-conversation');
+                removeBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const filename = s.filename;
+                    const ok = confirm(`Delete conversation "${filename}"?\n\nThis cannot be undone.`);
+                    if (!ok) return;
+                    try {
+                        await invoke('delete_transcript', { filename });
+                        // If currently viewing this conversation in read-only, exit to a safe state
+                        if (this.readOnlyMode && this.activeConversationFilename === filename) {
+                            this._createNewSession();
+                            this.activeConversationFilename = null;
+                        }
+                        await this._loadConversationList();
+                        this._showToast('Deleted conversation', 'success');
+                    } catch (err) {
+                        this._showToast(`Delete failed: ${err}`, 'error');
+                    }
+                });
                 li.addEventListener('click', () => {
                     this._openConversationReadOnly(s.filename);
                 });
@@ -1901,6 +1905,159 @@ class App {
             toast.classList.remove('show');
             setTimeout(() => toast.remove(), 300);
         }, duration);
+    }
+
+    _insertIntoTextarea(textarea, insertText) {
+        const start = textarea.selectionStart ?? textarea.value.length;
+        const end = textarea.selectionEnd ?? textarea.value.length;
+        const before = textarea.value.slice(0, start);
+        const after = textarea.value.slice(end);
+        textarea.value = before + insertText + after;
+        const nextPos = start + insertText.length;
+        textarea.focus();
+        textarea.setSelectionRange(nextPos, nextPos);
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    _setTemplateMode(mode) {
+        this.currentTemplate = mode || null;
+        const uploads = document.getElementById('interview-uploads');
+        if (uploads) uploads.style.display = this.currentTemplate === 'Interview' ? '' : 'none';
+    }
+
+    _isAllowedInterviewFile(filename) {
+        const name = String(filename || '').toLowerCase();
+        return name.endsWith('.pdf') || name.endsWith('.docx');
+    }
+
+    _updateInterviewUploadPills() {
+        const pillCv = document.getElementById('pill-cv');
+        const pillCvName = document.getElementById('pill-cv-name');
+        const pillJd = document.getElementById('pill-jd');
+        const pillJdName = document.getElementById('pill-jd-name');
+
+        if (pillCv && pillCvName) {
+            if (this._interviewCvFile) {
+                pillCvName.textContent = this._interviewCvFile.name || 'CV';
+                pillCv.style.display = '';
+            } else {
+                pillCvName.textContent = '';
+                pillCv.style.display = 'none';
+            }
+        }
+
+        if (pillJd && pillJdName) {
+            if (this._interviewJdFile) {
+                pillJdName.textContent = this._interviewJdFile.name || 'JD';
+                pillJd.style.display = '';
+            } else {
+                pillJdName.textContent = '';
+                pillJd.style.display = 'none';
+            }
+        }
+    }
+
+    _initInterviewUploads() {
+        const uploads = document.getElementById('interview-uploads');
+        const btnUpload = document.getElementById('btn-upload-interview-files');
+        const inputFiles = document.getElementById('file-upload-interview');
+        const clearCv = document.getElementById('pill-cv-clear');
+        const clearJd = document.getElementById('pill-jd-clear');
+
+        if (!uploads || !btnUpload || !inputFiles) return;
+
+        // Default hidden until Interview selected
+        uploads.style.display = 'none';
+
+        btnUpload.addEventListener('click', () => inputFiles.click());
+
+        inputFiles.addEventListener('change', () => {
+            const files = Array.from(inputFiles.files || []);
+            if (!files.length) return;
+
+            const allowed = files.filter(f => this._isAllowedInterviewFile(f.name));
+            if (!allowed.length) {
+                inputFiles.value = '';
+                this._showToast('Please choose .pdf or .docx files', 'error');
+                return;
+            }
+
+            // Use selection order: first = CV, second = JD (if present)
+            this._interviewCvFile = allowed[0] || null;
+            this._interviewJdFile = allowed[1] || null;
+            this._updateInterviewUploadPills();
+        });
+
+        clearCv?.addEventListener('click', () => {
+            this._interviewCvFile = null;
+            inputFiles.value = '';
+            this._updateInterviewUploadPills();
+        });
+
+        clearJd?.addEventListener('click', () => {
+            this._interviewJdFile = null;
+            inputFiles.value = '';
+            this._updateInterviewUploadPills();
+        });
+
+        this._updateInterviewUploadPills();
+    }
+
+    _initTemplateDropdown() {
+        const trigger = document.getElementById('btn-template');
+        const menu = document.getElementById('menu-template');
+        const input = document.getElementById('chat-input');
+        if (!trigger || !menu || !input) return;
+
+        const setOpen = (open) => {
+            if (open) {
+                menu.classList.add('open');
+                trigger.setAttribute('aria-expanded', 'true');
+                menu.setAttribute('aria-hidden', 'false');
+            } else {
+                menu.classList.remove('open');
+                trigger.setAttribute('aria-expanded', 'false');
+                menu.setAttribute('aria-hidden', 'true');
+            }
+        };
+
+        const isOpen = () => menu.classList.contains('open');
+
+        trigger.addEventListener('click', (e) => {
+            e.preventDefault();
+            setOpen(!isOpen());
+        });
+
+        // Select mode on item click (no textbox insertion)
+        menu.querySelectorAll('.template-item').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                this._setTemplateMode(btn.textContent?.trim() || null);
+                input.focus();
+                setOpen(false);
+            });
+        });
+
+        // Close when clicking outside
+        document.addEventListener('mousedown', (e) => {
+            const dropdown = document.getElementById('template-dropdown');
+            if (!dropdown) return;
+            if (!dropdown.contains(e.target)) setOpen(false);
+        });
+
+        // Close on Esc
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') setOpen(false);
+        });
+    }
+
+    _sendChatMessage() {
+        const input = document.getElementById('chat-input');
+        if (!input) return;
+        const text = (input.value || '').trim();
+        if (!text) return;
+
+        input.value = '';
+        this.transcriptUI?.addChatMessage?.(text, 'ME');
     }
 }
 

@@ -81,7 +81,7 @@ pub fn start_local_pipeline(
 
     // Use venv python if MLX setup is complete, otherwise fall back to system python
     let home = std::env::var("HOME").unwrap_or_else(|_| "/Users/phucnt".to_string());
-    let venv_python = format!("{}/Library/Application Support/My Translator/mlx-env/bin/python3", home);
+    let venv_python = format!("{}/Library/Application Support/MyJavis/mlx-env/bin/python3", home);
 
     let python = if std::path::Path::new(&venv_python).exists() {
         log_to_file(&format!("Using venv python: {}", venv_python));
@@ -223,8 +223,8 @@ fn stop_local_pipeline_inner(state: &LocalPipelineState) {
 #[tauri::command]
 pub fn check_mlx_setup() -> Result<String, String> {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/Users/phucnt".to_string());
-    let marker = format!("{}/Library/Application Support/My Translator/mlx-env/.setup_complete", home);
-    let venv_python = format!("{}/Library/Application Support/My Translator/mlx-env/bin/python3", home);
+    let marker = format!("{}/Library/Application Support/MyJavis/mlx-env/.setup_complete", home);
+    let venv_python = format!("{}/Library/Application Support/MyJavis/mlx-env/bin/python3", home);
 
     if std::path::Path::new(&marker).exists() && std::path::Path::new(&venv_python).exists() {
         // Read marker to get details

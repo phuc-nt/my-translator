@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "MyTranslator",
+  "productName": "MyJavis",
   "version": "0.5.1",
   "identifier": "com.personal.translator",
   "build": {
@@ -12,11 +12,11 @@
     "windows": [
       {
         "label": "main",
-        "title": "My Translator",
+        "title": "MyJavis",
         "width": 600,
         "height": 400,
-        "minWidth": 400,
-        "minHeight": 200,
+        "minWidth": 1024,
+        "minHeight": 768,
         "center": true,
         "transparent": false,
         "decorations": false,

@@ -2407,7 +2407,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "my-translator"
+name = "myjavis"
 version = "0.5.1"
 dependencies = [
  "base64 0.22.1",
@@ -2431,6 +2431,7 @@ dependencies = [
  "tokio-tungstenite",
  "uuid",
  "windows 0.58.0",
+ "windows-core 0.58.0",
 ]
 
 [[package]]

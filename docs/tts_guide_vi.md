@@ -1,6 +1,6 @@
 # Hướng Dẫn TTS (Text-to-Speech)
 
-My Translator có thể **đọc thành tiếng bản dịch** ngay khi xuất hiện — như có phiên dịch viên ngồi cạnh. Hỗ trợ 3 nhà cung cấp:
+MyJavis có thể **đọc thành tiếng bản dịch** ngay khi xuất hiện — như có phiên dịch viên ngồi cạnh. Hỗ trợ 3 nhà cung cấp:
 
 ## So sánh các lựa chọn
 
@@ -22,7 +22,7 @@ My Translator có thể **đọc thành tiếng bản dịch** ngay khi xuất h
 
 ### Edge TTS là gì?
 
-Edge TTS dùng cùng công nghệ giọng nói neural của **Microsoft Edge** (tính năng "Đọc to"). My Translator kết nối đến cùng dịch vụ để đọc bản dịch.
+Edge TTS dùng cùng công nghệ giọng nói neural của **Microsoft Edge** (tính năng "Đọc to"). MyJavis kết nối đến cùng dịch vụ để đọc bản dịch.
 
 - **Không cần API key** — bật là dùng
 - **Không giới hạn rõ ràng** — miễn phí cho mục đích cá nhân

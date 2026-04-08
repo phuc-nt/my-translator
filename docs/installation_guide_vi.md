@@ -1,6 +1,6 @@
-# Hướng Dẫn Cài Đặt My Translator
+# Hướng Dẫn Cài Đặt MyJavis
 
-Hướng dẫn từng bước cài đặt và sử dụng **My Translator** trên macOS.
+Hướng dẫn từng bước cài đặt và sử dụng **MyJavis** trên macOS.
 
 ---
 
@@ -18,22 +18,22 @@ Hướng dẫn từng bước cài đặt và sử dụng **My Translator** trê
 Tải file `.dmg` mới nhất tại: [**Releases — macOS**](https://github.com/phuc-nt/my-translator/releases/latest)
 
 Chọn đúng file:
-- `MyTranslator_x.x.x_aarch64.dmg` — Apple Silicon (M1/M2/M3/M4)
-- `MyTranslator_x.x.x_x64.dmg` — Intel Mac
+- `MyJavis_x.x.x_aarch64.dmg` — Apple Silicon (M1/M2/M3/M4)
+- `MyJavis_x.x.x_x64.dmg` — Intel Mac
 
 ---
 
 ## Bước 2 — Cài đặt
 
 1. Mở file `.dmg` vừa tải
-2. Kéo **My Translator** vào thư mục **Applications**
+2. Kéo **MyJavis** vào thư mục **Applications**
 3. Eject DMG
 
 ---
 
 ## Bước 3 — Mở lần đầu
 
-Mở My Translator từ Applications.
+Mở MyJavis từ Applications.
 
 > ✅ App đã được ký và notarize — macOS sẽ cho phép mở mà không cảnh báo bảo mật.
 
@@ -44,7 +44,7 @@ Mở My Translator từ Applications.
 Lần đầu mở app, macOS sẽ hỏi quyền **Screen & System Audio Recording**:
 
 1. Bấm **Open System Settings** khi được hỏi
-2. Tìm **My Translator** trong danh sách
+2. Tìm **MyJavis** trong danh sách
 3. **Bật công tắc ON**
 4. macOS sẽ yêu cầu **Quit & Reopen** — bấm nút đó
 
@@ -159,7 +159,7 @@ Xem [Hướng dẫn TTS](tts_guide_vi.md) để biết cách lấy API key từn
 
 ## Cập nhật
 
-My Translator có tính năng **tự động cập nhật**. Khi có bản mới:
+MyJavis có tính năng **tự động cập nhật**. Khi có bản mới:
 
 1. **Badge xanh** xuất hiện trên icon ⚙️ Settings
 2. Mở Settings → tab **About** → bấm **Download & Install**

@@ -122,3 +122,24 @@ pub fn read_transcript(app: AppHandle, filename: String) -> Result<String, Strin
     fs::read_to_string(&filepath)
         .map_err(|e| format!("Failed to read transcript: {}", e))
 }
+
+/// Delete a saved transcript file
+#[tauri::command]
+pub fn delete_transcript(app: AppHandle, filename: String) -> Result<(), String> {
+    // Sanitize: no path traversal, and require transcript files only
+    if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
+        return Err("Invalid filename".to_string());
+    }
+    if !filename.ends_with(".md") {
+        return Err("Invalid filename".to_string());
+    }
+
+    let dir = transcript_dir(&app)?;
+    let filepath = dir.join(&filename);
+
+    match fs::remove_file(&filepath) {
+        Ok(_) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(format!("Failed to delete transcript: {}", e)),
+    }
+}

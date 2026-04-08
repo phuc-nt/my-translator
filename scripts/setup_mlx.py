@@ -9,7 +9,7 @@ Usage:
     python3 setup_mlx.py [--check] [--env-dir DIR]
 
     --check     Only check if setup is complete (exit 0=ready, 1=not ready)
-    --env-dir   Custom venv directory (default: ~/Library/Application Support/My Translator/mlx-env)
+    --env-dir   Custom venv directory (default: ~/Library/Application Support/MyJavis/mlx-env)
 """
 
 import json
@@ -27,7 +27,7 @@ def emit(data):
 
 def get_default_env_dir():
     """Get default venv directory."""
-    app_support = os.path.expanduser("~/Library/Application Support/My Translator")
+    app_support = os.path.expanduser("~/Library/Application Support/MyJavis")
     return os.path.join(app_support, "mlx-env")
 
 

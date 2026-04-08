@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Local translation pipeline sidecar for My Translator.
+Local translation pipeline sidecar for MyJavis.
 Receives PCM audio via stdin, transcribes with Whisper, translates with Qwen2.5 LLM.
 Outputs JSON results via stdout.
 

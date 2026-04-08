@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc:*)",
+      "Bash(du -sh /e/Projects/assistant/*)",
+      "Bash(curl:*)",
+      "Bash(python3 -c ':*)",
+      "Bash(sed:*)",
+      "Bash(C:UsersDainn.claudepluginscacheclaude-plugins-officialsuperpowers5.0.7scriptsstart-server.sh --project-dir \"e:/Projects/assistant\")",
+      "Bash(cat \"e:/Projects/assistant/.superpowers/brainstorm/\"*/state/server-info)",
+      "mcp__claude_ai_Linear__list_teams",
+      "mcp__claude_ai_Linear__list_projects",
+      "mcp__claude_ai_Linear__list_issue_statuses",
+      "mcp__claude_ai_Linear__list_milestones",
+      "mcp__claude_ai_Linear__save_milestone",
+      "mcp__claude_ai_Linear__save_issue",
+      "mcp__claude_ai_Linear__get_project",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Bash(cargo check:*)"
+    ]
+  }
+}

@@ -95,7 +95,7 @@ use windows::Win32::Media::Audio::{
     eRender,
 };
 use windows::Win32::System::Com::{
-    CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_MULTITHREADED,
+    CoCreateInstance, CoInitializeEx, CoTaskMemAlloc, CoUninitialize, CLSCTX_ALL, COINIT_MULTITHREADED,
 };
 use windows::core::{implement, Interface, IUnknown, PCWSTR};
 
@@ -148,12 +148,21 @@ impl IActivateAudioInterfaceCompletionHandler_Impl for CompletionHandler_Impl {
 //
 // The returned PROPVARIANT must be forgotten (not dropped) because pBlobData
 // points to stack memory, not heap — PropVariantClear must not free it.
+//
+// IMPORTANT: This is incorrect and can cause heap corruption. We now allocate
+// the blob with CoTaskMemAlloc so PROPVARIANT can be safely cleared/dropped.
 // ─────────────────────────────────────────────────────────────────────────────
 
 unsafe fn build_activation_propvariant(
     params: &AUDIOCLIENT_ACTIVATION_PARAMS,
-) -> windows::core::PROPVARIANT {
+) -> Result<windows::core::PROPVARIANT, String> {
     const VT_BLOB: u16 = 65u16; // VT_BLOB value from propidlbase.h
+    let size = std::mem::size_of::<AUDIOCLIENT_ACTIVATION_PARAMS>();
+    let mem = CoTaskMemAlloc(size) as *mut u8;
+    if mem.is_null() {
+        return Err("CoTaskMemAlloc failed for activation params".to_string());
+    }
+    std::ptr::copy_nonoverlapping(params as *const _ as *const u8, mem, size);
 
     // PROPVARIANT is repr(transparent) wrapping the inner raw struct.
     // Both share the same memory layout, so we can zero-init via PROPVARIANT
@@ -167,14 +176,14 @@ unsafe fn build_activation_propvariant(
     // blob.cbSize is at offset 8 on both 32-bit and 64-bit Windows
     // (vt:u16, wReserved1:u16, wReserved2:u16, wReserved3:u16 = 8 bytes total padding)
     let cbsize_ptr = pv_ptr.add(8) as *mut u32;
-    cbsize_ptr.write(std::mem::size_of::<AUDIOCLIENT_ACTIVATION_PARAMS>() as u32);
+    cbsize_ptr.write(size as u32);
 
     // blob.pBlobData is at offset 16 on 64-bit (cbSize:u32 + 4 bytes padding + ptr)
     // On 32-bit it would be at offset 12, but Tauri targets 64-bit Windows.
     let pblobdata_ptr = pv_ptr.add(16) as *mut *mut u8;
-    pblobdata_ptr.write(params as *const _ as *mut u8);
+    pblobdata_ptr.write(mem);
 
-    pv
+    Ok(pv)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -275,7 +284,7 @@ fn start_app_loopback(
         };
 
         // params must outlive prop_variant
-        let prop_variant = build_activation_propvariant(&params);
+        let prop_variant = build_activation_propvariant(&params)?;
 
         // Sync channel for async completion handler
         let (tx, rx) = mpsc::sync_channel::<Result<IAudioClient, String>>(1);
@@ -333,10 +342,6 @@ fn start_app_loopback(
             source_channels,
             bits_per_sample,
         );
-
-        // prop_variant drop would call PropVariantClear — we must forget it since
-        // pBlobData points to stack memory (params), not heap-allocated data.
-        std::mem::forget(prop_variant);
 
         CoUninitialize();
         Ok(())

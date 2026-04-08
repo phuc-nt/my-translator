@@ -152,8 +152,8 @@ macOS Vision framework yêu cầu Objective-C FFI trong Rust (`objc` crate) — 
    - `Language B`: Japanese
 
 **How Both Parties Can Receive Translations**:
-Because My Translator is a local desktop application without a central server, there is no direct link to share. To let the partner understand the transcript, the User has two main methods:
-- **Method 1 (Recommended) - Share Screen**: The User shares the "Entire Screen" in the meeting app, positioning the My Translator overlay at the bottom. The partner can read the translations like live subtitles.
+Because MyJavis is a local desktop application without a central server, there is no direct link to share. To let the partner understand the transcript, the User has two main methods:
+- **Method 1 (Recommended) - Share Screen**: The User shares the "Entire Screen" in the meeting app, positioning the MyJavis overlay at the bottom. The partner can read the translations like live subtitles.
 - **Method 2 - Text-to-Speech (TTS)**: The User enables TTS with a Japanese voice. When the User speaks Vietnamese, the app translates and reads the Japanese text aloud. This generated audio is picked up by the microphone (or handled via virtual audio routing) and sent to the partner.
 
 **Note on Use Case**: The app acts as a "Personal Translation Assistant", giving the User highly accurate, custom context-aware translations to understand the partner. If screen sharing is not viable, the partner can additionally use the native "Live Captions" feature of Zoom/Meet as a fallback.

@@ -20,12 +20,14 @@ fn get_platform_info() -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    eprintln!("[boot] myjavis starting...");
     // Load settings from disk (or defaults)
     let initial_settings = Settings::load();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            eprintln!("[boot] tauri setup...");
             #[cfg(desktop)]
             {
                 app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
@@ -52,6 +54,7 @@ pub fn run() {
             commands::transcript::open_transcript_dir,
             commands::transcript::list_transcripts,
             commands::transcript::read_transcript,
+            commands::transcript::delete_transcript,
             commands::local_pipeline::start_local_pipeline,
             commands::local_pipeline::send_audio_to_pipeline,
             commands::local_pipeline::stop_local_pipeline,
