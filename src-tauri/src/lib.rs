@@ -1,5 +1,8 @@
 mod audio;
 mod commands;
+mod db;
+mod secrets;
+mod services;
 mod settings;
 
 use audio::microphone::MicCapture;
@@ -7,7 +10,9 @@ use audio::SystemAudioCapture;
 use commands::audio::AudioState;
 use commands::local_pipeline::LocalPipelineState;
 use settings::{Settings, SettingsState};
+use db::InterviewDb;
 use std::sync::Mutex;
+use tauri::Manager;
 
 #[tauri::command]
 fn get_platform_info() -> String {
@@ -28,6 +33,10 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             eprintln!("[boot] tauri setup...");
+            let handle = app.handle().clone();
+            let conn = db::open_connection(&handle)
+                .map_err(|e| format!("assistant DB init: {e}"))?;
+            app.manage(InterviewDb(Mutex::new(conn)));
             #[cfg(desktop)]
             {
                 app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
@@ -61,6 +70,13 @@ pub fn run() {
             commands::local_pipeline::check_mlx_setup,
             commands::local_pipeline::run_mlx_setup,
             commands::edge_tts::edge_tts_speak,
+            commands::secrets::interview_set_api_key,
+            commands::secrets::interview_clear_api_key,
+            commands::secrets::interview_has_api_key,
+            commands::secrets::interview_key_status,
+            commands::interview::ingest_interview_files,
+            commands::interview::save_interview_message,
+            commands::interview::suggest_interview_answers,
             get_platform_info,
         ])
         .run(tauri::generate_context!())

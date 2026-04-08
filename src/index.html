@@ -177,6 +177,10 @@
               <button type="button" class="template-item" role="menuitem" data-insert="Meeting: ">Meeting</button>
             </div>
           </div>
+          <div id="interview-suggestions-panel" class="interview-suggestions-panel" style="display:none" aria-live="polite">
+            <div class="interview-suggestions-header">Suggested answers</div>
+            <ul id="interview-suggestions-list" class="interview-suggestions-list"></ul>
+          </div>
           <div id="interview-uploads" class="interview-uploads" style="display:none">
             <button type="button" class="upload-btn upload-icon-btn" id="btn-upload-interview-files" title="Upload CV &amp; JD (.pdf/.docx)" aria-label="Upload CV & JD">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -232,6 +236,7 @@
         <button class="settings-tab active" data-tab="tab-translation">Translation</button>
         <button class="settings-tab" data-tab="tab-display">Display</button>
         <button class="settings-tab" data-tab="tab-tts">TTS</button>
+        <button class="settings-tab" data-tab="tab-interview"> AI</button>
         <button class="settings-tab" data-tab="tab-about">About</button>
       </div>
 
@@ -639,6 +644,65 @@
               <option value="onwK4e9ZLuTAKqWW03F9">Daniel — Male</option>
               <option value="pNInz6obpgDQGcFmaJgB">Adam — Male</option>
             </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab: Interview AI (RAG + LLM; secrets in OS keychain) -->
+      <div class="settings-tab-content" id="tab-interview">
+        <div class="settings-section">
+          <span class="field-label">Interview LLM (suggested answers)</span>
+          <select id="select-interview-llm">
+            <option value="openai">OpenAI (GPT-4o mini)</option>
+            <option value="gemini">Google Gemini 2.0 Flash</option>
+            <option value="claude">Anthropic Claude 3.5 Haiku</option>
+          </select>
+          <p class="hint">API keys below are stored in the OS credential vault, not in settings.json.</p>
+        </div>
+
+        <div class="settings-section">
+          <div class="field-row pinecone-config-row">
+            <div class="field">
+              <span class="field-label">Pinecone index host</span>
+              <input type="text" id="interview-pinecone-host" placeholder="https://your-index-xxxx.svc.us-east1-aws.pinecone.io" autocomplete="off" />
+            </div>
+            <div class="field">
+              <span class="field-label">Vector dimension</span>
+              <input type="number" id="interview-pinecone-dim" min="256" max="3072" step="1" value="1536" />
+            </div>
+          </div>
+          <p class="hint">Copy the HOST from Pinecone Console → Index → HOST. Use <strong>1536</strong> for OpenAI embeddings (default), or <strong>768</strong> only if your Pinecone index was created for Gemini <code>text-embedding-004</code>.</p>
+        </div>
+
+        <div class="settings-section">
+          <span class="field-label">API keys (keychain)</span>
+          <div class="interview-key-row" data-provider="openai">
+            <span class="interview-key-label">OpenAI</span>
+            <input type="password" class="interview-key-input" autocomplete="off" placeholder="sk-…" />
+            <button type="button" class="interview-key-save secondary-btn">Save</button>
+            <button type="button" class="interview-key-clear secondary-btn">Clear</button>
+            <span class="interview-key-status">—</span>
+          </div>
+          <div class="interview-key-row" data-provider="gemini">
+            <span class="interview-key-label">Gemini</span>
+            <input type="password" class="interview-key-input" autocomplete="off" placeholder="AIza…" />
+            <button type="button" class="interview-key-save secondary-btn">Save</button>
+            <button type="button" class="interview-key-clear secondary-btn">Clear</button>
+            <span class="interview-key-status">—</span>
+          </div>
+          <div class="interview-key-row" data-provider="claude">
+            <span class="interview-key-label">Claude</span>
+            <input type="password" class="interview-key-input" autocomplete="off" placeholder="sk-ant-…" />
+            <button type="button" class="interview-key-save secondary-btn">Save</button>
+            <button type="button" class="interview-key-clear secondary-btn">Clear</button>
+            <span class="interview-key-status">—</span>
+          </div>
+          <div class="interview-key-row" data-provider="pinecone">
+            <span class="interview-key-label">Pinecone</span>
+            <input type="password" class="interview-key-input" autocomplete="off" placeholder="pcsk_…" />
+            <button type="button" class="interview-key-save secondary-btn">Save</button>
+            <button type="button" class="interview-key-clear secondary-btn">Clear</button>
+            <span class="interview-key-status">—</span>
           </div>
         </div>
       </div>

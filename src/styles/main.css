@@ -549,7 +549,9 @@ body {
   flex: 1;
   min-width: 0;
   display: flex;
+  flex-wrap: wrap;
   align-items: stretch;
+  align-content: center;
   gap: 6px;
   padding: 6px;
   border: 1px solid var(--border-light);
@@ -606,6 +608,88 @@ body {
 
 .interview-uploads .upload-btn:hover {
   background: rgba(0, 0, 0, 0.30);
+}
+
+.interview-suggestions-panel {
+  width: 100%;
+  flex-basis: 100%;
+  order: 10;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.interview-suggestions-header {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+  margin-bottom: 6px;
+}
+
+.interview-suggestions-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.interview-suggestions-list .suggestion-chip {
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 12px;
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+.interview-suggestions-list .suggestion-chip:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.interview-key-row {
+  display: grid;
+  grid-template-columns: 72px 1fr auto auto 72px;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.interview-key-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.interview-key-input {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.interview-key-status {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+  text-align: right;
+}
+
+.interview-key-status.on {
+  color: #7dffb3;
+  font-weight: 600;
 }
 
 .upload-pill {
@@ -1551,7 +1635,8 @@ body {
 }
 
 input[type="text"],
-input[type="password"] {
+input[type="password"],
+input[type="number"] {
   width: 100%;
   padding: 8px 12px;
   border: 1px solid var(--border-light);
@@ -1565,9 +1650,21 @@ input[type="password"] {
 }
 
 input[type="text"]:focus,
-input[type="password"]:focus {
+input[type="password"]:focus,
+input[type="number"]:focus {
   border-color: var(--border-focus);
   box-shadow: 0 0 0 2px rgba(99, 140, 255, 0.1);
+}
+
+/* Cleaner number inputs (optional spinners) */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
 }
 
 input::placeholder {
@@ -1603,6 +1700,10 @@ select:focus {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
+}
+
+.pinecone-config-row {
+  grid-template-columns: 2fr 1fr;
 }
 
 .field {

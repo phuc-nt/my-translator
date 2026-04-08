@@ -24,6 +24,13 @@ const DEFAULT_SETTINGS = {
   edge_tts_voice: 'vi-VN-HoaiMyNeural',
   edge_tts_speed: 50,
   tts_auto_read: true,
+  google_tts_api_key: '',
+  google_tts_voice: 'vi-VN-Chirp3-HD-Aoede',
+  google_tts_speed: 1.0,
+  // Interview RAG (non-secret; keys via Tauri keychain commands)
+  interview_llm_provider: 'openai',
+  pinecone_host: '',
+  pinecone_vector_dimension: 1536,
 };
 
 class SettingsManager {

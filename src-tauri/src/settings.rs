@@ -64,6 +64,14 @@ pub struct Settings {
     pub google_tts_voice: String,
     /// Google TTS speaking rate
     pub google_tts_speed: f64,
+
+    // ─── Interview RAG (non-secret; API keys in OS keychain) ───
+    /// LLM for suggestions: "openai" | "gemini" | "claude"
+    pub interview_llm_provider: String,
+    /// Pinecone index host, e.g. `https://my-index-xxxxx.pinecone.io`
+    pub pinecone_host: String,
+    /// Expected vector dimension for the Pinecone index (1536 OpenAI, 768 Gemini-only)
+    pub pinecone_vector_dimension: u32,
 }
 
 impl Default for Settings {
@@ -90,6 +98,9 @@ impl Default for Settings {
             google_tts_api_key: String::new(),
             google_tts_voice: "vi-VN-Chirp3-HD-Aoede".to_string(),
             google_tts_speed: 1.0,
+            interview_llm_provider: "openai".to_string(),
+            pinecone_host: String::new(),
+            pinecone_vector_dimension: 1536,
         }
     }
 }

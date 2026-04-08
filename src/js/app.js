@@ -41,6 +41,9 @@ class App {
         this.currentTemplate = null; // 'Interview' | 'Meeting' | null
         this._interviewCvFile = null;
         this._interviewJdFile = null;
+        this._interviewSuggestTimer = null;
+        this._interviewSuggestGen = 0;
+        this._ingestInterviewDebounce = null;
     }
 
     async init() {
@@ -185,6 +188,7 @@ class App {
 
         this._initTemplateDropdown();
         this._initInterviewUploads();
+        this._bindInterviewSettingsKeys();
 
         // Start/Stop button
         document.getElementById('btn-start').addEventListener('click', async () => {
@@ -392,6 +396,7 @@ class App {
         sonioxClient.onTranslation = (text) => {
             this.transcriptUI.addTranslation(text);
             this._speakIfEnabled(text);
+            this._onInterviewSpeakerFinal(text);
         };
 
         sonioxClient.onProvisional = (text, speaker, language) => {
@@ -616,6 +621,16 @@ class App {
         if (googleSpeedSlider) googleSpeedSlider.value = googleSpeed;
         if (googleSpeedLabel) googleSpeedLabel.textContent = googleSpeed + 'x';
 
+        // Interview AI (non-secret fields)
+        const interviewLlm = document.getElementById('select-interview-llm');
+        if (interviewLlm) interviewLlm.value = s.interview_llm_provider || 'openai';
+        const pineHost = document.getElementById('interview-pinecone-host');
+        if (pineHost) pineHost.value = s.pinecone_host || '';
+        const pineDim = document.getElementById('interview-pinecone-dim');
+        if (pineDim) pineDim.value = String(s.pinecone_vector_dimension ?? 1536);
+
+        void this._refreshInterviewKeyRows();
+
         // TTS provider
         const providerSelect = document.getElementById('select-tts-provider');
         if (providerSelect) {
@@ -687,6 +702,13 @@ class App {
         settings.google_tts_voice = document.getElementById('select-google-voice')?.value || 'vi-VN-Chirp3-HD-Aoede';
         settings.google_tts_speed = parseFloat(document.getElementById('range-google-speed')?.value || 1.0);
         settings.tts_enabled = false;
+
+        settings.interview_llm_provider = document.getElementById('select-interview-llm')?.value || 'openai';
+        settings.pinecone_host = document.getElementById('interview-pinecone-host')?.value?.trim() || '';
+        settings.pinecone_vector_dimension = parseInt(
+            document.getElementById('interview-pinecone-dim')?.value || '1536',
+            10,
+        );
 
         try {
             await settingsManager.save(settings);
@@ -1174,6 +1196,7 @@ class App {
                 if (data.translated) {
                     this.transcriptUI.addTranslation(data.translated);
                     this._speakIfEnabled(data.translated);
+                    this._onInterviewSpeakerFinal(data.translated);
                 }
                 }, 80);
                 break;
@@ -1822,11 +1845,11 @@ class App {
         // GitHub links
         document.getElementById('link-github')?.addEventListener('click', (e) => {
             e.preventDefault();
-            window.__TAURI__?.opener?.openUrl('https://github.com/phuc-nt/my-translator');
+            window.__TAURI__?.opener?.openUrl('https://github.com/dainn-dev/assistant');
         });
         document.getElementById('link-issues')?.addEventListener('click', (e) => {
             e.preventDefault();
-            window.__TAURI__?.opener?.openUrl('https://github.com/phuc-nt/my-translator/issues');
+            window.__TAURI__?.opener?.openUrl('https://github.com/dainn-dev/assistant/issues');
         });
 
         // Check for Updates button
@@ -1923,6 +1946,15 @@ class App {
         this.currentTemplate = mode || null;
         const uploads = document.getElementById('interview-uploads');
         if (uploads) uploads.style.display = this.currentTemplate === 'Interview' ? '' : 'none';
+        const sugPanel = document.getElementById('interview-suggestions-panel');
+        if (sugPanel && this.currentTemplate !== 'Interview') {
+            sugPanel.style.display = 'none';
+        }
+        if (this.currentTemplate !== 'Interview') {
+            this._interviewSuggestGen += 1;
+        } else {
+            this._scheduleInterviewIngest();
+        }
     }
 
     _isAllowedInterviewFile(filename) {
@@ -1986,6 +2018,7 @@ class App {
             this._interviewCvFile = allowed[0] || null;
             this._interviewJdFile = allowed[1] || null;
             this._updateInterviewUploadPills();
+            this._scheduleInterviewIngest();
         });
 
         clearCv?.addEventListener('click', () => {
@@ -2058,6 +2091,180 @@ class App {
 
         input.value = '';
         this.transcriptUI?.addChatMessage?.(text, 'ME');
+        if (this.currentTemplate === 'Interview') {
+            (async () => {
+                try {
+                    await invoke('save_interview_message', {
+                        req: { userId: this._getInterviewUserId(), role: 'user', content: text },
+                    });
+                } catch (e) {
+                    console.warn('[Interview] save user message', e);
+                }
+                this._scheduleInterviewSuggestions({ userDraft: text });
+            })();
+        }
+    }
+
+    _bindInterviewSettingsKeys() {
+        document.querySelectorAll('.interview-key-row').forEach((row) => {
+            const provider = row.dataset.provider;
+            if (!provider) return;
+            row.querySelector('.interview-key-save')?.addEventListener('click', async () => {
+                const keyInput = row.querySelector('.interview-key-input');
+                const apiKey = (keyInput?.value || '').trim();
+                if (!apiKey) {
+                    this._showToast('Enter a key first', 'error');
+                    return;
+                }
+                try {
+                    await invoke('interview_set_api_key', { payload: { provider, apiKey } });
+                    if (keyInput) keyInput.value = '';
+                    this._showToast(`${provider} key saved securely`, 'success');
+                    await this._refreshInterviewKeyRows();
+                } catch (err) {
+                    this._showToast(`Key save failed: ${err}`, 'error');
+                }
+            });
+            row.querySelector('.interview-key-clear')?.addEventListener('click', async () => {
+                try {
+                    await invoke('interview_clear_api_key', { provider });
+                    this._showToast(`${provider} key cleared`, 'success');
+                    await this._refreshInterviewKeyRows();
+                } catch (err) {
+                    this._showToast(`Clear failed: ${err}`, 'error');
+                }
+            });
+        });
+    }
+
+    async _refreshInterviewKeyRows() {
+        try {
+            const st = await invoke('interview_key_status');
+            document.querySelectorAll('.interview-key-row').forEach((row) => {
+                const p = row.dataset.provider;
+                const badge = row.querySelector('.interview-key-status');
+                if (!badge || !p) return;
+                const on = st[p] === true;
+                badge.textContent = on ? 'Saved' : 'Not set';
+                badge.classList.toggle('on', on);
+            });
+        } catch (e) {
+            console.warn('[Interview] key status', e);
+        }
+    }
+
+    _getInterviewUserId() {
+        const KEY = 'myjavis_interview_user_id';
+        let id = localStorage.getItem(KEY);
+        if (!id) {
+            id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `u_${Date.now()}`;
+            localStorage.setItem(KEY, id);
+        }
+        return id;
+    }
+
+    _scheduleInterviewIngest() {
+        if (this.currentTemplate !== 'Interview') return;
+        if (!this._interviewCvFile && !this._interviewJdFile) return;
+        clearTimeout(this._ingestInterviewDebounce);
+        this._ingestInterviewDebounce = setTimeout(() => void this._ingestInterviewFilesNow(), 500);
+    }
+
+    async _ingestInterviewFilesNow() {
+        if (!this._interviewCvFile && !this._interviewJdFile) return;
+        try {
+            const userId = this._getInterviewUserId();
+            /** @type {{ userId: string, cv?: object, jd?: object }} */
+            const req = { userId };
+            if (this._interviewCvFile) {
+                const buf = await this._interviewCvFile.arrayBuffer();
+                req.cv = {
+                    filename: this._interviewCvFile.name,
+                    bytes: Array.from(new Uint8Array(buf)),
+                };
+            }
+            if (this._interviewJdFile) {
+                const buf = await this._interviewJdFile.arrayBuffer();
+                req.jd = {
+                    filename: this._interviewJdFile.name,
+                    bytes: Array.from(new Uint8Array(buf)),
+                };
+            }
+            const res = await invoke('ingest_interview_files', { req });
+            this._showToast(res.message || 'Documents indexed', 'success');
+        } catch (e) {
+            this._showToast(`Ingest failed: ${e}`, 'error');
+        }
+    }
+
+    _onInterviewSpeakerFinal(text) {
+        if (this.currentTemplate !== 'Interview') return;
+        const t = String(text || '').trim();
+        if (!t) return;
+        (async () => {
+            try {
+                await invoke('save_interview_message', {
+                    req: { userId: this._getInterviewUserId(), role: 'speaker', content: t },
+                });
+            } catch (e) {
+                console.warn('[Interview] save speaker line', e);
+            }
+            this._scheduleInterviewSuggestions({ transcriptContext: t });
+        })();
+    }
+
+    _scheduleInterviewSuggestions({ transcriptContext, userDraft }) {
+        if (this.currentTemplate !== 'Interview') return;
+        clearTimeout(this._interviewSuggestTimer);
+        const gen = ++this._interviewSuggestGen;
+        this._interviewSuggestTimer = setTimeout(() => {
+            void this._runInterviewSuggestions(gen, { transcriptContext, userDraft });
+        }, 780);
+    }
+
+    async _runInterviewSuggestions(gen, { transcriptContext, userDraft }) {
+        if (gen !== this._interviewSuggestGen) return;
+        const panel = document.getElementById('interview-suggestions-panel');
+        try {
+            const res = await invoke('suggest_interview_answers', {
+                req: {
+                    userId: this._getInterviewUserId(),
+                    transcriptContext: transcriptContext || null,
+                    userDraft: userDraft || null,
+                },
+            });
+            if (gen !== this._interviewSuggestGen) return;
+            this._renderInterviewSuggestions(res.suggestions || []);
+        } catch (e) {
+            console.warn('[Interview] suggest', e);
+            if (gen === this._interviewSuggestGen && panel) panel.style.display = 'none';
+        }
+    }
+
+    _renderInterviewSuggestions(items) {
+        const panel = document.getElementById('interview-suggestions-panel');
+        const list = document.getElementById('interview-suggestions-list');
+        if (!panel || !list) return;
+        if (this.currentTemplate !== 'Interview' || !items.length) {
+            panel.style.display = 'none';
+            list.innerHTML = '';
+            return;
+        }
+        panel.style.display = '';
+        list.innerHTML = '';
+        items.forEach((text) => {
+            const li = document.createElement('li');
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'suggestion-chip';
+            btn.textContent = text;
+            btn.addEventListener('click', () => {
+                const ta = document.getElementById('chat-input');
+                if (ta) this._insertIntoTextarea(ta, `${text} `);
+            });
+            li.appendChild(btn);
+            list.appendChild(li);
+        });
     }
 }
 
