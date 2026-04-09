@@ -15,6 +15,8 @@
 
 > 📖 Installation guides: [macOS (EN)](docs/installation_guide.md) · [macOS (VI)](docs/installation_guide_vi.md) · [Windows (EN)](docs/installation_guide_win.md) · [Windows (VI)](docs/installation_guide_win_vi.md)
 
+> 🤖 Android: see [docs/android.md](docs/android.md)
+
 ---
 
 ## How It Works

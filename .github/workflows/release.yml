@@ -163,8 +163,69 @@ jobs:
             src-tauri/target/release/bundle/msi/*.msi
             src-tauri/target/release/bundle/msi/*.msi.sig
 
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android packages
+        run: |
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0" \
+            "ndk;26.3.11579264"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Init Android (Tauri)
+        run: npm run tauri android init
+
+      - name: Enforce minSdkVersion = 29
+        run: |
+          echo "Patching src-tauri/gen/android/app/build.gradle.kts (minSdk=29)"
+          sed -i 's/minSdk = [0-9]\\+/minSdk = 29/g' src-tauri/gen/android/app/build.gradle.kts
+          grep -n "minSdk = " src-tauri/gen/android/app/build.gradle.kts
+
+      - name: Build Android (APK)
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+        run: npm run tauri android build -- --apk
+
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build
+          path: |
+            src-tauri/gen/android/**/outputs/**/*.apk
+            src-tauri/gen/android/**/outputs/**/*.aab
+
   release:
-    needs: [build-macos, build-macos-intel, build-windows]
+    needs: [build-macos, build-macos-intel, build-windows, build-android]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -190,6 +251,12 @@ jobs:
         with:
           name: windows-build
           path: artifacts/windows
+
+      - name: Download Android artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: android-build
+          path: artifacts/android
 
       - name: List artifacts
         run: find artifacts -type f | head -30
@@ -265,5 +332,7 @@ jobs:
             artifacts/**/*.exe
             artifacts/**/*.msi
             artifacts/**/*.app.tar.gz
+            artifacts/android/**/*.apk
+            artifacts/android/**/*.aab
             artifacts/**/*.sig
             artifacts/latest.json
