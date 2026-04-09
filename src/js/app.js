@@ -14,6 +14,7 @@ import { updater } from './updater.js';
 
 const { invoke } = window.__TAURI__.core;
 const { getCurrentWindow } = window.__TAURI__.window;
+const { listen } = window.__TAURI__.event;
 
 class App {
     constructor() {
@@ -44,6 +45,26 @@ class App {
         this._interviewSuggestTimer = null;
         this._interviewSuggestGen = 0;
         this._ingestInterviewDebounce = null;
+        this._suggestionsDock = {
+            originalParent: null,
+            originalNextSibling: null,
+            docked: false,
+        };
+        this._interviewSuggestionsClosed = false;
+        this._interviewSuggestionsItems = [];
+        this._pickedSuggestion = null;
+        this._lastInterviewSuggestArgs = { transcriptContext: null, userDraft: null };
+        this._rightPanelCollapsed = false;
+        this._interviewSuggestPerf = {
+            origin: null, // 'speaker' | 'draft' | null
+            t0: 0,
+            timer: null,
+            hideTimer: null,
+        };
+        this._interviewSuggestionsStream = {
+            timers: [],
+        };
+        this._brainstormPending = false;
     }
 
     async init() {
@@ -53,6 +74,7 @@ class App {
         // Init transcript UI
         const transcriptContainer = document.getElementById('transcript-content');
         this.transcriptUI = new TranscriptUI(transcriptContainer);
+        this.transcriptUI.onAfterRender = () => this._injectBrainstormButton();
 
         // Check platform — hide Local MLX on non-Apple-Silicon
         await this._checkPlatformSupport();
@@ -189,6 +211,31 @@ class App {
         this._initTemplateDropdown();
         this._initInterviewUploads();
         this._bindInterviewSettingsKeys();
+        this._bindDimChips();
+
+        // Interview suggestions triggered by inline brainstorm button (see _injectBrainstormButton)
+
+        // Close Interview suggestions panel
+        document.getElementById('btn-close-suggestions')?.addEventListener('click', () => {
+            this._interviewSuggestionsClosed = true;
+            // Collapse instead of fully hiding so the "Suggestions" open button
+            // stays in the same header position as the close button.
+            const panel = document.getElementById('interview-suggestions-panel');
+            if (panel) panel.style.display = '';
+            this._setRightPanelCollapsed(true);
+            // Keep docked if it was docked.
+        });
+
+        // Open Interview suggestions panel (after closing)
+        document.getElementById('btn-open-suggestions')?.addEventListener('click', () => {
+            if (this.currentTemplate !== 'Interview') return;
+            this._interviewSuggestionsClosed = false;
+            this._setRightPanelCollapsed(false);
+            if (this._interviewSuggestionsItems.length) return;
+            const { transcriptContext, userDraft } = this._lastInterviewSuggestArgs || {};
+            // Manual mode: do not auto-generate on open
+            //this._setInterviewSuggestionsStatus('Ready — click ⟳ to generate');
+        });
 
         // Start/Stop button
         document.getElementById('btn-start').addEventListener('click', async () => {
@@ -334,6 +381,13 @@ class App {
             input.type = input.type === 'password' ? 'text' : 'password';
         });
 
+        document.querySelectorAll('.btn-toggle-ai-key').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const input = document.getElementById(btn.dataset.target);
+                if (input) input.type = input.type === 'password' ? 'text' : 'password';
+            });
+        });
+
         // Settings tab switching
         document.querySelectorAll('.settings-tab').forEach(tab => {
             tab.addEventListener('click', () => {
@@ -401,6 +455,7 @@ class App {
 
         sonioxClient.onProvisional = (text, speaker, language) => {
             if (text) {
+                this._brainstormPending = false;
                 this.transcriptUI.setProvisional(text, speaker, language);
             } else {
                 this.transcriptUI.clearProvisional();
@@ -621,15 +676,27 @@ class App {
         if (googleSpeedSlider) googleSpeedSlider.value = googleSpeed;
         if (googleSpeedLabel) googleSpeedLabel.textContent = googleSpeed + 'x';
 
-        // Interview AI (non-secret fields)
-        const interviewLlm = document.getElementById('select-interview-llm');
-        if (interviewLlm) interviewLlm.value = s.interview_llm_provider || 'openai';
+        // Interview AI fields
         const pineHost = document.getElementById('interview-pinecone-host');
         if (pineHost) pineHost.value = s.pinecone_host || '';
         const pineDim = document.getElementById('interview-pinecone-dim');
-        if (pineDim) pineDim.value = String(s.pinecone_vector_dimension ?? 1536);
-
-        void this._refreshInterviewKeyRows();
+        if (pineDim) {
+            pineDim.value = String(s.pinecone_vector_dimension ?? 1536);
+            this._updateDimChips(pineDim.value);
+        }
+        const pineKey = document.getElementById('pinecone-api-key');
+        if (pineKey) pineKey.value = s.pinecone_api_key || '';
+        const llmUrl = document.getElementById('llm-url');
+        if (llmUrl) llmUrl.value = s.llm_url || '';
+        const llmModel = document.getElementById('llm-model');
+        if (llmModel) llmModel.value = s.llm_model || '';
+        const llmKey = document.getElementById('llm-api-key');
+        if (llmKey) llmKey.value = s.llm_api_key || '';
+        const suggestionType = document.getElementById('select-suggestion-type');
+        if (suggestionType) {
+            const v = s.suggestion_type || 'translation';
+            suggestionType.value = ['target', 'translation', 'both'].includes(v) ? v : 'translation';
+        }
 
         // TTS provider
         const providerSelect = document.getElementById('select-tts-provider');
@@ -703,12 +770,17 @@ class App {
         settings.google_tts_speed = parseFloat(document.getElementById('range-google-speed')?.value || 1.0);
         settings.tts_enabled = false;
 
-        settings.interview_llm_provider = document.getElementById('select-interview-llm')?.value || 'openai';
         settings.pinecone_host = document.getElementById('interview-pinecone-host')?.value?.trim() || '';
         settings.pinecone_vector_dimension = parseInt(
             document.getElementById('interview-pinecone-dim')?.value || '1536',
             10,
         );
+        settings.llm_url = document.getElementById('llm-url')?.value?.trim() || '';
+        settings.llm_model = document.getElementById('llm-model')?.value?.trim() || '';
+        settings.pinecone_api_key = document.getElementById('pinecone-api-key')?.value?.trim() || '';
+        settings.llm_api_key = document.getElementById('llm-api-key')?.value?.trim() || '';
+        const st = document.getElementById('select-suggestion-type')?.value || 'translation';
+        settings.suggestion_type = ['target', 'translation', 'both'].includes(st) ? st : 'translation';
 
         try {
             await settingsManager.save(settings);
@@ -725,6 +797,16 @@ class App {
         // Update overlay opacity
         const overlayView = document.getElementById('overlay-view');
         overlayView.style.opacity = settings.overlay_opacity || 0.85;
+
+        // Apply app font size to UI bits that use CSS vars (e.g. Interview suggestions)
+        const fs = Number(settings.font_size || 16);
+        document.documentElement.style.setProperty('--app-font-size', `${Number.isFinite(fs) ? fs : 16}px`);
+        const ff = String(settings.font_family || '').trim();
+        if (ff) {
+            document.documentElement.style.setProperty('--app-font-family', ff);
+        } else {
+            document.documentElement.style.removeProperty('--app-font-family');
+        }
 
         // Update transcript UI
         if (this.transcriptUI) {
@@ -1944,17 +2026,130 @@ class App {
 
     _setTemplateMode(mode) {
         this.currentTemplate = mode || null;
+        if (this.currentTemplate === 'Interview') {
+            this._interviewSuggestionsClosed = false;
+        }
+
+        // Update dropdown label
+        const templateLabel = document.querySelector('#btn-template .template-trigger-label');
+        if (templateLabel) templateLabel.textContent = this.currentTemplate || 'Template';
+
         const uploads = document.getElementById('interview-uploads');
         if (uploads) uploads.style.display = this.currentTemplate === 'Interview' ? '' : 'none';
         const sugPanel = document.getElementById('interview-suggestions-panel');
         if (sugPanel && this.currentTemplate !== 'Interview') {
             sugPanel.style.display = 'none';
+            this._undockInterviewSuggestions();
+            this._rightPanelCollapsed = false;
         }
         if (this.currentTemplate !== 'Interview') {
             this._interviewSuggestGen += 1;
         } else {
+            // Always show the right-panel toggle in Interview mode (even before suggestions exist).
+            if (sugPanel) sugPanel.style.display = '';
+            this._dockInterviewSuggestionsRight();
+            // Default to collapsed rail until user opens (and/or suggestions arrive).
+            this._setRightPanelCollapsed(true);
             this._scheduleInterviewIngest();
         }
+    }
+
+    _dockInterviewSuggestionsRight() {
+        const panel = document.getElementById('interview-suggestions-panel');
+        const right = document.getElementById('right-panel');
+        const resizer = document.getElementById('right-panel-resizer');
+        const contentArea = document.getElementById('content-area');
+        if (!panel || !right || !contentArea) return;
+
+        // Record original DOM position once, so we can restore later.
+        if (!this._suggestionsDock.originalParent) {
+            this._suggestionsDock.originalParent = panel.parentElement;
+            this._suggestionsDock.originalNextSibling = panel.nextSibling;
+        }
+
+        if (panel.parentElement !== right) {
+            right.appendChild(panel);
+        }
+
+        right.style.display = '';
+        if (resizer) resizer.style.display = '';
+        contentArea.classList.add('split-suggestions');
+        panel.classList.add('docked-right');
+        this._suggestionsDock.docked = true;
+
+        this._initRightPanelResizer();
+    }
+
+    _initRightPanelResizer() {
+        const resizer = document.getElementById('right-panel-resizer');
+        const right = document.getElementById('right-panel');
+        const contentArea = document.getElementById('content-area');
+        if (!resizer || !right || !contentArea || resizer._resizerBound) return;
+        resizer._resizerBound = true;
+
+        // Restore saved width
+        const saved = localStorage.getItem('rightPanelWidth');
+        if (saved) right.style.width = saved;
+
+        resizer.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            resizer.classList.add('dragging');
+            const startX = e.clientX;
+            const startW = right.getBoundingClientRect().width;
+            const totalW = contentArea.getBoundingClientRect().width;
+            const maxW = Math.floor(totalW * 0.5);
+
+            const onMove = (ev) => {
+                const dx = startX - ev.clientX; // drag left = wider panel
+                const newW = Math.min(maxW, Math.max(200, startW + dx));
+                right.style.width = newW + 'px';
+            };
+
+            const onUp = () => {
+                resizer.classList.remove('dragging');
+                localStorage.setItem('rightPanelWidth', right.style.width);
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+            };
+
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
+    }
+
+    _setRightPanelCollapsed(collapsed) {
+        const contentArea = document.getElementById('content-area');
+        const btnOpen = document.getElementById('btn-open-suggestions');
+        const btnClose = document.getElementById('btn-close-suggestions');
+        if (!contentArea || !btnOpen || !btnClose) return;
+        this._rightPanelCollapsed = !!collapsed;
+        contentArea.classList.toggle('right-panel-collapsed', this._rightPanelCollapsed);
+        btnOpen.style.display = this._rightPanelCollapsed ? '' : 'none';
+        btnClose.style.display = this._rightPanelCollapsed ? 'none' : '';
+    }
+
+    _undockInterviewSuggestions() {
+        const panel = document.getElementById('interview-suggestions-panel');
+        const right = document.getElementById('right-panel');
+        const contentArea = document.getElementById('content-area');
+        if (!panel || !right || !contentArea) return;
+
+        panel.classList.remove('docked-right');
+
+        const { originalParent, originalNextSibling } = this._suggestionsDock;
+        if (originalParent) {
+            if (originalNextSibling && originalNextSibling.parentNode === originalParent) {
+                originalParent.insertBefore(panel, originalNextSibling);
+            } else {
+                originalParent.appendChild(panel);
+            }
+        }
+
+        const resizer = document.getElementById('right-panel-resizer');
+        if (resizer) resizer.style.display = 'none';
+        right.style.display = 'none';
+        contentArea.classList.remove('split-suggestions');
+        this._suggestionsDock.docked = false;
     }
 
     _isAllowedInterviewFile(filename) {
@@ -2091,6 +2286,7 @@ class App {
 
         input.value = '';
         this.transcriptUI?.addChatMessage?.(text, 'ME');
+        this._consumePickedSuggestion(text);
         if (this.currentTemplate === 'Interview') {
             (async () => {
                 try {
@@ -2100,35 +2296,77 @@ class App {
                 } catch (e) {
                     console.warn('[Interview] save user message', e);
                 }
-                this._scheduleInterviewSuggestions({ userDraft: text });
+                // Manual mode: store draft context, but don't auto-generate
+                this._lastInterviewSuggestArgs = { transcriptContext: null, userDraft: text };
+                //this._setInterviewSuggestionsStatus('Ready — click ⟳ to generate');
             })();
         }
+    }
+
+    _consumePickedSuggestion(sentText) {
+        const picked = this._pickedSuggestion;
+        this._pickedSuggestion = null;
+        if (!picked || picked.id == null) return;
+        if (!sentText || !String(sentText).includes(picked.text)) return;
+
+        const next = this._interviewSuggestionsItems.filter((it) => it.id !== picked.id);
+        if (next.length === this._interviewSuggestionsItems.length) return;
+
+        this._renderInterviewSuggestions(next);
+    }
+
+    _updateDimChips(currentVal) {
+        document.querySelectorAll('.ai-dim-chip').forEach(chip => {
+            chip.classList.toggle('active', chip.dataset.dim === String(currentVal));
+        });
+    }
+
+    _bindDimChips() {
+        const dimInput = document.getElementById('interview-pinecone-dim');
+        if (!dimInput) return;
+        document.querySelectorAll('.ai-dim-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                dimInput.value = chip.dataset.dim;
+                this._updateDimChips(chip.dataset.dim);
+            });
+        });
+        dimInput.addEventListener('input', () => this._updateDimChips(dimInput.value));
     }
 
     _bindInterviewSettingsKeys() {
         document.querySelectorAll('.interview-key-row').forEach((row) => {
             const provider = row.dataset.provider;
             if (!provider) return;
-            row.querySelector('.interview-key-save')?.addEventListener('click', async () => {
-                const keyInput = row.querySelector('.interview-key-input');
-                const apiKey = (keyInput?.value || '').trim();
-                if (!apiKey) {
-                    this._showToast('Enter a key first', 'error');
-                    return;
-                }
+            const keyInput = row.querySelector('.interview-key-input');
+            const icon = row.querySelector('.interview-key-icon');
+
+            // Clear input when focused if showing placeholder dots
+            keyInput?.addEventListener('focus', () => {
+                if (keyInput.dataset.hasSavedKey === 'true') keyInput.value = '';
+            });
+
+            // Auto-save on blur
+            keyInput?.addEventListener('blur', async () => {
+                const apiKey = keyInput.value.trim();
+                if (!apiKey || apiKey === '••••••••') return;
                 try {
                     await invoke('interview_set_api_key', { payload: { provider, apiKey } });
-                    if (keyInput) keyInput.value = '';
-                    this._showToast(`${provider} key saved securely`, 'success');
                     await this._refreshInterviewKeyRows();
                 } catch (err) {
                     this._showToast(`Key save failed: ${err}`, 'error');
                 }
             });
-            row.querySelector('.interview-key-clear')?.addEventListener('click', async () => {
+
+            // Auto-save on Enter
+            keyInput?.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') keyInput.blur();
+            });
+
+            // Click green tick → clear
+            icon?.addEventListener('click', async () => {
+                if (!icon.classList.contains('is-saved')) return;
                 try {
                     await invoke('interview_clear_api_key', { provider });
-                    this._showToast(`${provider} key cleared`, 'success');
                     await this._refreshInterviewKeyRows();
                 } catch (err) {
                     this._showToast(`Clear failed: ${err}`, 'error');
@@ -2138,19 +2376,32 @@ class App {
     }
 
     async _refreshInterviewKeyRows() {
-        try {
-            const st = await invoke('interview_key_status');
-            document.querySelectorAll('.interview-key-row').forEach((row) => {
-                const p = row.dataset.provider;
-                const badge = row.querySelector('.interview-key-status');
-                if (!badge || !p) return;
-                const on = st[p] === true;
-                badge.textContent = on ? 'Saved' : 'Not set';
-                badge.classList.toggle('on', on);
-            });
-        } catch (e) {
+        const st = await invoke('interview_key_status').catch((e) => {
             console.warn('[Interview] key status', e);
-        }
+            return null;
+        });
+        if (!st) return;
+        document.querySelectorAll('.interview-key-row').forEach((row) => {
+            const p = row.dataset.provider;
+            const input = row.querySelector('.interview-key-input');
+            const icon = row.querySelector('.interview-key-icon');
+            if (!p) return;
+            const on = st[p] === true;
+            if (input) {
+                input.dataset.hasSavedKey = on ? 'true' : 'false';
+                input.classList.toggle('is-saved', on);
+                if (on && !input.value) input.value = '••••••••';
+                if (!on) input.value = '';
+            }
+            if (icon) {
+                icon.classList.toggle('is-saved', on);
+                icon.classList.toggle('not-set', !on);
+                icon.title = on ? 'Click to clear' : 'Not set';
+                icon.innerHTML = on
+                    ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="9 12 11 14 15 10"/></svg>'
+                    : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>';
+            }
+        });
     }
 
     _getInterviewUserId() {
@@ -2172,28 +2423,52 @@ class App {
 
     async _ingestInterviewFilesNow() {
         if (!this._interviewCvFile && !this._interviewJdFile) return;
+
+        const progressEl = document.getElementById('ingest-progress');
+        const fillEl = document.getElementById('ingest-progress-fill');
+        const labelEl = document.getElementById('ingest-progress-label');
+
+        const stageLabel = { extracting: 'Extracting…', embedding: 'Embedding…', upserting: 'Saving to index…', done: 'Done' };
+        const showProgress = (pct, label) => {
+            if (progressEl) progressEl.style.display = 'flex';
+            if (fillEl) fillEl.style.width = `${pct}%`;
+            if (labelEl) labelEl.textContent = label;
+        };
+        const hideProgress = () => {
+            setTimeout(() => { if (progressEl) progressEl.style.display = 'none'; }, 1200);
+        };
+
+        showProgress(0, 'Preparing…');
+        const unlisten = await listen('ingest:progress', (e) => {
+            const { stage, current, total, docType } = e.payload;
+            const prefix = docType === 'cv' ? 'CV' : 'JD';
+            let pct = 5;
+            if (stage === 'embedding') pct = total > 0 ? 10 + Math.round((current / total) * 70) : 10;
+            else if (stage === 'upserting') pct = 85;
+            else if (stage === 'done') pct = 100;
+            showProgress(pct, `${prefix}: ${stageLabel[stage] || stage}`);
+        });
+
         try {
             const userId = this._getInterviewUserId();
-            /** @type {{ userId: string, cv?: object, jd?: object }} */
             const req = { userId };
             if (this._interviewCvFile) {
                 const buf = await this._interviewCvFile.arrayBuffer();
-                req.cv = {
-                    filename: this._interviewCvFile.name,
-                    bytes: Array.from(new Uint8Array(buf)),
-                };
+                req.cv = { filename: this._interviewCvFile.name, bytes: Array.from(new Uint8Array(buf)) };
             }
             if (this._interviewJdFile) {
                 const buf = await this._interviewJdFile.arrayBuffer();
-                req.jd = {
-                    filename: this._interviewJdFile.name,
-                    bytes: Array.from(new Uint8Array(buf)),
-                };
+                req.jd = { filename: this._interviewJdFile.name, bytes: Array.from(new Uint8Array(buf)) };
             }
             const res = await invoke('ingest_interview_files', { req });
+            showProgress(100, 'Indexed');
             this._showToast(res.message || 'Documents indexed', 'success');
         } catch (e) {
+            if (progressEl) progressEl.style.display = 'none';
             this._showToast(`Ingest failed: ${e}`, 'error');
+        } finally {
+            unlisten();
+            hideProgress();
         }
     }
 
@@ -2201,6 +2476,9 @@ class App {
         if (this.currentTemplate !== 'Interview') return;
         const t = String(text || '').trim();
         if (!t) return;
+        this._lastInterviewSuggestArgs = { transcriptContext: t, userDraft: null };
+        this._brainstormPending = true;
+        this._injectBrainstormButton();
         (async () => {
             try {
                 await invoke('save_interview_message', {
@@ -2209,23 +2487,269 @@ class App {
             } catch (e) {
                 console.warn('[Interview] save speaker line', e);
             }
-            this._scheduleInterviewSuggestions({ transcriptContext: t });
         })();
+    }
+
+    _injectBrainstormButton() {
+        if (!this._brainstormPending) return;
+        const content = document.getElementById('transcript-content');
+        if (!content) return;
+        // Remove any existing brainstorm button first
+        content.querySelectorAll('.seg-brainstorm-btn').forEach(el => el.remove());
+        // Support both view modes: subtitle-pair (subtitle view) and seg-block (single/dual view)
+        const pairs = content.querySelectorAll('.subtitle-pair:not(.pending), .seg-block');
+        const lastBlock = pairs[pairs.length - 1];
+        if (!lastBlock) return;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'seg-brainstorm-btn';
+        btn.title = 'Generate answer suggestions';
+        btn.innerHTML = `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a7 7 0 0 1 7 7c0 2.5-1.3 4.7-3.3 6l-.7.5V17a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2v-1.5l-.7-.5A7 7 0 0 1 5 9a7 7 0 0 1 7-7z"/>
+            <line x1="9" y1="21" x2="15" y2="21"/>
+        </svg>`;
+        btn.addEventListener('click', () => {
+            this._brainstormPending = false;
+            btn.remove();
+            this._interviewSuggestionsClosed = false;
+            this._setRightPanelCollapsed(false);
+            const { transcriptContext, userDraft } = this._lastInterviewSuggestArgs || {};
+            this._markInterviewSuggestStart(transcriptContext ? 'speaker' : 'draft');
+            this._scheduleInterviewSuggestions({ transcriptContext, userDraft });
+        });
+        lastBlock.appendChild(btn);
     }
 
     _scheduleInterviewSuggestions({ transcriptContext, userDraft }) {
         if (this.currentTemplate !== 'Interview') return;
+        // Manual mode: _markInterviewSuggestStart is called by the trigger button
+        this._lastInterviewSuggestArgs = {
+            transcriptContext: transcriptContext || null,
+            userDraft: userDraft || null,
+        };
         clearTimeout(this._interviewSuggestTimer);
         const gen = ++this._interviewSuggestGen;
         this._interviewSuggestTimer = setTimeout(() => {
             void this._runInterviewSuggestions(gen, { transcriptContext, userDraft });
-        }, 780);
+        }, 200);
+    }
+
+    _setInterviewSuggestionsStatus(text) {
+        const el = document.getElementById('interview-suggestions-status');
+        if (!el) return;
+        if (!text) {
+            el.style.display = 'none';
+            el.textContent = '';
+            return;
+        }
+        el.style.display = '';
+        el.textContent = text;
+    }
+
+    _markInterviewSuggestStart(origin) {
+        this._cancelInterviewSuggestionsStreaming();
+        if (this._interviewSuggestPerf.hideTimer) {
+            clearTimeout(this._interviewSuggestPerf.hideTimer);
+            this._interviewSuggestPerf.hideTimer = null;
+        }
+        this._interviewSuggestPerf.origin = origin || null;
+        this._interviewSuggestPerf.t0 = performance.now();
+        if (this._interviewSuggestPerf.timer) clearInterval(this._interviewSuggestPerf.timer);
+        this._interviewSuggestPerf.timer = setInterval(() => {
+            const ms = performance.now() - this._interviewSuggestPerf.t0;
+            const s = (ms / 1000).toFixed(ms < 10_000 ? 1 : 0);
+            this._setInterviewSuggestionsStatus(`Generating… ${s}s`);
+        }, 100);
+        this._setInterviewSuggestionsStatus('Generating… 0.0s');
+    }
+
+    _markInterviewSuggestDone(ok) {
+        const t0 = this._interviewSuggestPerf.t0 || performance.now();
+        const ms = performance.now() - t0;
+        const s = (ms / 1000).toFixed(ms < 10_000 ? 1 : 0);
+        if (this._interviewSuggestPerf.timer) {
+            clearInterval(this._interviewSuggestPerf.timer);
+            this._interviewSuggestPerf.timer = null;
+        }
+        this._setInterviewSuggestionsStatus(ok ? `Done · ${s}s` : `Failed · ${s}s`);
+        this._interviewSuggestPerf.hideTimer = setTimeout(() => {
+            this._setInterviewSuggestionsStatus('');
+            this._interviewSuggestPerf.hideTimer = null;
+        }, 2500);
+    }
+
+    _cancelInterviewSuggestionsStreaming() {
+        const timers = this._interviewSuggestionsStream?.timers || [];
+        timers.forEach((t) => {
+            clearTimeout(t);
+            clearInterval(t);
+        });
+        this._interviewSuggestionsStream.timers = [];
+    }
+
+    _renderInterviewSuggestionsStream(items) {
+        // Renders list immediately (structure/buttons), then reveals text progressively.
+        this._cancelInterviewSuggestionsStreaming();
+        const t0 = this._interviewSuggestPerf.t0;
+        const ms = t0 ? performance.now() - t0 : 0;
+        const renderTime = ms > 0 ? (ms / 1000).toFixed(ms < 10000 ? 1 : 0) + 's' : '';
+
+        const panel = document.getElementById('interview-suggestions-panel');
+        const list = document.getElementById('interview-suggestions-list');
+        if (!panel || !list) return;
+
+        const normalized = this._normalizeInterviewSuggestionItems(items);
+        this._interviewSuggestionsItems = normalized.slice();
+
+        if (this._interviewSuggestionsClosed) {
+            panel.style.display = '';
+            this._setRightPanelCollapsed(true);
+            return;
+        }
+        if (this.currentTemplate !== 'Interview') {
+            panel.style.display = 'none';
+            list.innerHTML = '';
+            this._undockInterviewSuggestions();
+            return;
+        }
+        if (!normalized.length) {
+            panel.style.display = '';
+            list.innerHTML = '';
+            this._dockInterviewSuggestionsRight();
+            this._setRightPanelCollapsed(true);
+            return;
+        }
+
+        this._setRightPanelCollapsed(false);
+        panel.style.display = '';
+        list.innerHTML = '';
+
+        const suggestionType = settingsManager.get().suggestion_type || 'translation';
+
+        const mkTypewriter = (btn, fullText) => {
+            const text = String(fullText || '');
+            btn.textContent = '';
+            const state = { i: 0 };
+            const tick = () => {
+                const chunk = text.slice(0, state.i);
+                btn.textContent = chunk;
+                if (state.i >= text.length) return false;
+                state.i = Math.min(text.length, state.i + Math.max(2, Math.ceil(text.length / 40)));
+                return true;
+            };
+            tick();
+            const interval = setInterval(() => {
+                if (!tick()) clearInterval(interval);
+            }, 30);
+            this._interviewSuggestionsStream.timers.push(interval);
+        };
+
+        normalized.forEach((item, idx) => {
+            const delay = idx * 120;
+            const t = setTimeout(() => {
+                if (suggestionType === 'both') {
+                    if (!item.target.trim() && !item.translation.trim()) return;
+                    const li = document.createElement('li');
+                    li.className = 'suggestion-chip-row';
+                    li.dataset.face = 'target';
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'suggestion-chip';
+
+                    const del = document.createElement('button');
+                    del.type = 'button';
+                    del.className = 'suggestion-chip-delete';
+                    del.title = 'Remove suggestion';
+                    del.setAttribute('aria-label', 'Remove suggestion');
+                    del.innerHTML = '×';
+                    del.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        this._renderInterviewSuggestions(this._interviewSuggestionsItems.filter((it) => it.id !== item.id));
+                    });
+
+                    const toggle = document.createElement('button');
+                    toggle.type = 'button';
+                    toggle.className = 'suggestion-chip-lang';
+                    toggle.title = 'Switch language';
+                    toggle.setAttribute('aria-label', 'Switch language');
+                    toggle.innerHTML =
+                        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>';
+                    toggle.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const nextFace = li.dataset.face === 'translation' ? 'target' : 'translation';
+                        li.dataset.face = nextFace;
+                        const full = this._suggestionFaceText(item, nextFace);
+                        mkTypewriter(btn, full);
+                    });
+
+                    btn.addEventListener('click', () => {
+                        const face = li.dataset.face === 'translation' ? 'translation' : 'target';
+                        const text = this._suggestionFaceText(item, face);
+                        if (!text.trim()) return;
+                        const ta = document.getElementById('chat-input');
+                        this._pickedSuggestion = { id: item.id, text };
+                        if (ta) this._insertIntoTextarea(ta, `${text} `);
+                    });
+
+                    const timeSpan = document.createElement('span');
+                    timeSpan.className = 'suggestion-chip-time';
+                    timeSpan.textContent = renderTime;
+
+                    li.appendChild(btn);
+                    li.appendChild(del);
+                    li.appendChild(timeSpan);
+                    li.appendChild(toggle);
+                    list.appendChild(li);
+
+                    mkTypewriter(btn, this._suggestionFaceText(item, 'target'));
+                    return;
+                }
+
+                const text = this._suggestionChipLabel(item, suggestionType);
+                if (!text.trim()) return;
+                const li = document.createElement('li');
+                li.className = 'suggestion-chip-row';
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'suggestion-chip';
+                btn.addEventListener('click', () => {
+                    const ta = document.getElementById('chat-input');
+                    this._pickedSuggestion = { id: item.id, text };
+                    if (ta) this._insertIntoTextarea(ta, `${text} `);
+                });
+                const del = document.createElement('button');
+                del.type = 'button';
+                del.className = 'suggestion-chip-delete';
+                del.title = 'Remove suggestion';
+                del.setAttribute('aria-label', 'Remove suggestion');
+                del.innerHTML = '×';
+                del.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this._renderInterviewSuggestions(this._interviewSuggestionsItems.filter((it) => it.id !== item.id));
+                });
+
+                const timeSpan = document.createElement('span');
+                timeSpan.className = 'suggestion-chip-time';
+                timeSpan.textContent = renderTime;
+
+                li.appendChild(btn);
+                li.appendChild(del);
+                li.appendChild(timeSpan);
+                list.appendChild(li);
+                mkTypewriter(btn, text);
+            }, delay);
+            this._interviewSuggestionsStream.timers.push(t);
+        });
+
+        this._dockInterviewSuggestionsRight();
     }
 
     async _runInterviewSuggestions(gen, { transcriptContext, userDraft }) {
         if (gen !== this._interviewSuggestGen) return;
         const panel = document.getElementById('interview-suggestions-panel');
         try {
+            // If we didn't get a speaker/draft marker for some reason, start timing here.
+            if (!this._interviewSuggestPerf.t0) this._markInterviewSuggestStart(null);
             const res = await invoke('suggest_interview_answers', {
                 req: {
                     userId: this._getInterviewUserId(),
@@ -2234,37 +2758,151 @@ class App {
                 },
             });
             if (gen !== this._interviewSuggestGen) return;
-            this._renderInterviewSuggestions(res.suggestions || []);
+            this._renderInterviewSuggestionsStream(res.suggestions || []);
+            this._markInterviewSuggestDone(true);
         } catch (e) {
             console.warn('[Interview] suggest', e);
             if (gen === this._interviewSuggestGen && panel) panel.style.display = 'none';
+            this._markInterviewSuggestDone(false);
         }
+    }
+
+    _normalizeInterviewSuggestionItems(raw) {
+        const st = settingsManager.get().suggestion_type || 'translation';
+        if (!Array.isArray(raw)) return [];
+        return raw.map((x, i) => {
+            if (typeof x === 'string') {
+                if (st === 'translation') return { id: i, target: '', translation: x };
+                if (st === 'target') return { id: i, target: x, translation: '' };
+                return { id: i, target: x, translation: x };
+            }
+            const id = typeof x.id === 'number' ? x.id : i;
+            return {
+                id,
+                target: x.target != null ? String(x.target) : '',
+                translation: x.translation != null ? String(x.translation) : '',
+            };
+        });
+    }
+
+    _suggestionFaceText(item, face) {
+        return face === 'translation' ? item.translation : item.target;
+    }
+
+    _suggestionChipLabel(item, suggestionType) {
+        if (suggestionType === 'translation') return item.translation || item.target;
+        if (suggestionType === 'target') return item.target || item.translation;
+        return item.target || item.translation;
     }
 
     _renderInterviewSuggestions(items) {
         const panel = document.getElementById('interview-suggestions-panel');
         const list = document.getElementById('interview-suggestions-list');
         if (!panel || !list) return;
-        if (this.currentTemplate !== 'Interview' || !items.length) {
-            panel.style.display = 'none';
-            list.innerHTML = '';
+        const normalized = this._normalizeInterviewSuggestionItems(items);
+        this._interviewSuggestionsItems = normalized.slice();
+        if (this._interviewSuggestionsClosed) {
+            panel.style.display = '';
+            this._setRightPanelCollapsed(true);
             return;
         }
+        if (this.currentTemplate !== 'Interview') {
+            panel.style.display = 'none';
+            list.innerHTML = '';
+            this._undockInterviewSuggestions();
+            return;
+        }
+        if (!normalized.length) {
+            // Keep the panel rail visible in Interview mode even when there are no suggestions yet.
+            panel.style.display = '';
+            list.innerHTML = '';
+            this._dockInterviewSuggestionsRight();
+            this._setRightPanelCollapsed(true);
+            return;
+        }
+        this._setRightPanelCollapsed(false);
         panel.style.display = '';
         list.innerHTML = '';
-        items.forEach((text) => {
+        const suggestionType = settingsManager.get().suggestion_type || 'translation';
+        normalized.forEach((item) => {
+            if (suggestionType === 'both') {
+                if (!item.target.trim() && !item.translation.trim()) return;
+                const li = document.createElement('li');
+                li.className = 'suggestion-chip-row';
+                li.dataset.face = 'target';
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'suggestion-chip';
+                btn.textContent = this._suggestionFaceText(item, 'target');
+
+                const del = document.createElement('button');
+                del.type = 'button';
+                del.className = 'suggestion-chip-delete';
+                del.title = 'Remove suggestion';
+                del.setAttribute('aria-label', 'Remove suggestion');
+                del.innerHTML = '×';
+                del.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this._renderInterviewSuggestions(this._interviewSuggestionsItems.filter((it) => it.id !== item.id));
+                });
+
+                const toggle = document.createElement('button');
+                toggle.type = 'button';
+                toggle.className = 'suggestion-chip-lang';
+                toggle.title = 'Switch language';
+                toggle.setAttribute('aria-label', 'Switch language');
+                toggle.innerHTML =
+                    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>';
+                toggle.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const nextFace = li.dataset.face === 'translation' ? 'target' : 'translation';
+                    li.dataset.face = nextFace;
+                    btn.textContent = this._suggestionFaceText(item, nextFace);
+                });
+                btn.addEventListener('click', () => {
+                    const face = li.dataset.face === 'translation' ? 'translation' : 'target';
+                    const text = this._suggestionFaceText(item, face);
+                    if (!text.trim()) return;
+                    const ta = document.getElementById('chat-input');
+                    this._pickedSuggestion = { id: item.id, text };
+                    if (ta) this._insertIntoTextarea(ta, `${text} `);
+                });
+                li.appendChild(btn);
+                li.appendChild(del);
+                li.appendChild(toggle);
+                list.appendChild(li);
+                return;
+            }
+            const text = this._suggestionChipLabel(item, suggestionType);
+            if (!text.trim()) return;
             const li = document.createElement('li');
+            li.className = 'suggestion-chip-row';
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'suggestion-chip';
             btn.textContent = text;
             btn.addEventListener('click', () => {
                 const ta = document.getElementById('chat-input');
+                this._pickedSuggestion = { id: item.id, text };
                 if (ta) this._insertIntoTextarea(ta, `${text} `);
             });
+            const del = document.createElement('button');
+            del.type = 'button';
+            del.className = 'suggestion-chip-delete';
+            del.title = 'Remove suggestion';
+            del.setAttribute('aria-label', 'Remove suggestion');
+            del.innerHTML = '×';
+            del.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._renderInterviewSuggestions(this._interviewSuggestionsItems.filter((it) => it.id !== item.id));
+            });
             li.appendChild(btn);
+            li.appendChild(del);
             list.appendChild(li);
         });
+
+        // For Interview template, show suggestions in a split right panel (subtitle stays visible on the left).
+        this._dockInterviewSuggestionsRight();
     }
 }
 

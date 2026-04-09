@@ -405,6 +405,7 @@ export class TranscriptUI {
         } else {
             this._renderSingle();
         }
+        this.onAfterRender?.();
     }
 
     _renderSubtitle() {
@@ -445,10 +446,14 @@ export class TranscriptUI {
             (s.status === 'translated' && s.translation) || (s.status === 'chat' && s.original)
         );
 
+        const GAP_MS = 5000;
+        let lastSegTime = null;
+
         for (const seg of ordered) {
             if (seg.status === 'chat') {
                 // Flush any pending bilingual buffer before rendering chat bubble
                 flush();
+                lastSegTime = seg.createdAt || null;
                 chunks.push({
                     en: seg.original.trim(),
                     vi: '',
@@ -467,6 +472,12 @@ export class TranscriptUI {
                 flush();
                 currentSpeaker = segSpeaker;
             }
+
+            // Time gap > 5s -> treat as new subtitle block
+            if (lastSegTime !== null && seg.createdAt && (seg.createdAt - lastSegTime) > GAP_MS) {
+                flush();
+            }
+            lastSegTime = seg.createdAt || lastSegTime;
 
             const en = (seg.original || '').trim();
             const vi = (seg.translation || '').trim();

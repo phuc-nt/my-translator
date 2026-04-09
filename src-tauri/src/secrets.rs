@@ -1,64 +1,83 @@
-//! API keys stored in the OS credential store (never in settings JSON).
+//! API keys stored in a dedicated secrets.json file in the app config directory.
+//! Using file-based storage for cross-platform reliability (keyring v3 has
+//! empty-blob read issues on Windows Credential Manager).
 
-use keyring::Entry;
-
-const SERVICE: &str = "com.personal.translator.myjavis";
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::fs;
+use std::path::PathBuf;
 
 #[derive(Clone, Copy, Debug)]
 pub enum SecretSlot {
-    Openai,
-    Gemini,
-    Claude,
+    Llm,
     Pinecone,
 }
 
 impl SecretSlot {
-    fn username(self) -> &'static str {
+    fn key(self) -> &'static str {
         match self {
-            SecretSlot::Openai => "openai_api_key",
-            SecretSlot::Gemini => "gemini_api_key",
-            SecretSlot::Claude => "claude_api_key",
+            SecretSlot::Llm => "llm_api_key",
             SecretSlot::Pinecone => "pinecone_api_key",
         }
     }
 
     pub fn parse(s: &str) -> Option<SecretSlot> {
         match s.to_lowercase().as_str() {
-            "openai" => Some(SecretSlot::Openai),
-            "gemini" | "google" => Some(SecretSlot::Gemini),
-            "claude" | "anthropic" => Some(SecretSlot::Claude),
+            "llm" => Some(SecretSlot::Llm),
             "pinecone" => Some(SecretSlot::Pinecone),
             _ => None,
         }
     }
 }
 
-fn entry(slot: SecretSlot) -> Result<Entry, String> {
-    Entry::new(SERVICE, slot.username()).map_err(|e| format!("keyring entry: {e}"))
+#[derive(Debug, Serialize, Deserialize, Default)]
+struct SecretsFile {
+    #[serde(flatten)]
+    keys: HashMap<String, String>,
+}
+
+fn secrets_path() -> PathBuf {
+    let mut path = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
+    path.push("com.personal.translator");
+    path.push("secrets.json");
+    path
+}
+
+fn load_secrets() -> SecretsFile {
+    let path = secrets_path();
+    if !path.exists() {
+        return SecretsFile::default();
+    }
+    fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn save_secrets(store: &SecretsFile) -> Result<(), String> {
+    let path = secrets_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("create dir: {e}"))?;
+    }
+    let json = serde_json::to_string_pretty(store).map_err(|e| format!("serialize: {e}"))?;
+    fs::write(&path, json).map_err(|e| format!("write secrets: {e}"))
 }
 
 pub fn set_secret(slot: SecretSlot, value: &str) -> Result<(), String> {
-    let e = entry(slot)?;
-    e.set_password(value).map_err(|e| format!("Failed to store key: {e}"))
+    let mut store = load_secrets();
+    store.keys.insert(slot.key().to_string(), value.to_string());
+    save_secrets(&store)
 }
 
 pub fn get_secret(slot: SecretSlot) -> Result<Option<String>, String> {
-    let e = entry(slot)?;
-    match e.get_password() {
-        Ok(p) if !p.is_empty() => Ok(Some(p)),
-        Ok(_) => Ok(None),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => Err(format!("Failed to read key: {e}")),
-    }
+    let store = load_secrets();
+    Ok(store.keys.get(slot.key()).filter(|v| !v.is_empty()).cloned())
 }
 
 pub fn delete_secret(slot: SecretSlot) -> Result<(), String> {
-    let e = entry(slot)?;
-    match e.delete_credential() {
-        Ok(()) => Ok(()),
-        Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(format!("Failed to delete key: {e}")),
-    }
+    let mut store = load_secrets();
+    store.keys.remove(slot.key());
+    save_secrets(&store)
 }
 
 pub fn has_secret(slot: SecretSlot) -> Result<bool, String> {

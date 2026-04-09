@@ -29,7 +29,6 @@ http = "1"
 sha2 = "0.10"
 hex = "0.4"
 rand = "0.8"
-keyring = "3"
 rusqlite = { version = "0.32", features = ["bundled"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 pdf-extract = "0.7"

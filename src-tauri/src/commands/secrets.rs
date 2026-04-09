@@ -9,11 +9,8 @@ pub struct InterviewSetKeyPayload {
 }
 
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ProviderKeyFlags {
-    pub openai: bool,
-    pub gemini: bool,
-    pub claude: bool,
+    pub llm: bool,
     pub pinecone: bool,
 }
 
@@ -40,11 +37,9 @@ pub fn interview_has_api_key(provider: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub fn interview_key_status() -> Result<ProviderKeyFlags, String> {
-    Ok(ProviderKeyFlags {
-        openai: has_secret(SecretSlot::Openai)?,
-        gemini: has_secret(SecretSlot::Gemini)?,
-        claude: has_secret(SecretSlot::Claude)?,
-        pinecone: has_secret(SecretSlot::Pinecone)?,
-    })
+pub fn interview_key_status() -> ProviderKeyFlags {
+    ProviderKeyFlags {
+        llm: has_secret(SecretSlot::Llm).unwrap_or(false),
+        pinecone: has_secret(SecretSlot::Pinecone).unwrap_or(false),
+    }
 }

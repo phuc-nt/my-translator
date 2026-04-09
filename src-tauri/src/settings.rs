@@ -32,6 +32,8 @@ pub struct Settings {
     pub audio_source: String,
     /// Overlay opacity: 0.0 - 1.0
     pub overlay_opacity: f64,
+    /// Font family name (CSS font-family string)
+    pub font_family: String,
     /// Font size in px
     pub font_size: u32,
     /// Max transcript lines to display
@@ -65,13 +67,21 @@ pub struct Settings {
     /// Google TTS speaking rate
     pub google_tts_speed: f64,
 
-    // ─── Interview RAG (non-secret; API keys in OS keychain) ───
-    /// LLM for suggestions: "openai" | "gemini" | "claude"
-    pub interview_llm_provider: String,
-    /// Pinecone index host, e.g. `https://my-index-xxxxx.pinecone.io`
+    // ─── Interview RAG ───
+    /// Pinecone index host
     pub pinecone_host: String,
-    /// Expected vector dimension for the Pinecone index (1536 OpenAI, 768 Gemini-only)
+    /// Expected vector dimension for the Pinecone index
     pub pinecone_vector_dimension: u32,
+    /// LLM chat completions endpoint (OpenAI-compatible)
+    pub llm_url: String,
+    /// LLM model name
+    pub llm_model: String,
+    /// LLM API key
+    pub llm_api_key: String,
+    /// Pinecone API key
+    pub pinecone_api_key: String,
+    /// Interview suggestions language mode: "target" (source_language), "translation", "both"
+    pub suggestion_type: String,
 }
 
 impl Default for Settings {
@@ -82,6 +92,7 @@ impl Default for Settings {
             target_language: "vi".to_string(),
             audio_source: "system".to_string(),
             overlay_opacity: 0.85,
+            font_family: "Inter".to_string(),
             font_size: 16,
             max_lines: 5,
             show_original: true,
@@ -98,9 +109,13 @@ impl Default for Settings {
             google_tts_api_key: String::new(),
             google_tts_voice: "vi-VN-Chirp3-HD-Aoede".to_string(),
             google_tts_speed: 1.0,
-            interview_llm_provider: "openai".to_string(),
             pinecone_host: String::new(),
             pinecone_vector_dimension: 1536,
+            llm_url: String::new(),
+            llm_model: String::new(),
+            llm_api_key: String::new(),
+            pinecone_api_key: String::new(),
+            suggestion_type: "translation".to_string(),
         }
     }
 }

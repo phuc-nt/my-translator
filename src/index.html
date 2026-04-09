@@ -149,6 +149,12 @@
           </div>
         </div>
       </div>
+
+      <!-- Resize handle between transcript and right panel -->
+      <div id="right-panel-resizer" class="right-panel-resizer" style="display:none"></div>
+
+      <!-- Right panel (used for Interview suggestions when docked) -->
+      <div id="right-panel" class="right-panel" style="display:none" aria-label="Right panel"></div>
     </div>
 
     <!-- Chat Panel (UI-only) -->
@@ -178,7 +184,18 @@
             </div>
           </div>
           <div id="interview-suggestions-panel" class="interview-suggestions-panel" style="display:none" aria-live="polite">
-            <div class="interview-suggestions-header">Suggested answers</div>
+            <div class="interview-suggestions-header">
+              <span>Suggested answers</span>
+              <span id="interview-suggestions-status" class="interview-suggestions-status" style="display:none"></span>
+              <div class="interview-suggestions-actions">
+                <button type="button" id="btn-open-suggestions" class="interview-suggestions-open" style="display:none" title="Open panel" aria-label="Open panel">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <button type="button" id="btn-close-suggestions" class="interview-suggestions-close" aria-label="Close panel">×</button>
+              </div>
+            </div>
             <ul id="interview-suggestions-list" class="interview-suggestions-list"></ul>
           </div>
           <div id="interview-uploads" class="interview-uploads" style="display:none">
@@ -200,6 +217,11 @@
               <span class="upload-pill-label" id="pill-jd-label">JD:</span>
               <span class="upload-pill-name" id="pill-jd-name"></span>
               <button type="button" class="upload-pill-clear" id="pill-jd-clear" aria-label="Clear JD">×</button>
+            </div>
+
+            <div id="ingest-progress" style="display:none">
+              <div class="ingest-progress-bar"><div id="ingest-progress-fill"></div></div>
+              <span id="ingest-progress-label"></span>
             </div>
           </div>
           <textarea id="chat-input" rows="2" placeholder="Type a message… (Enter to send, Shift+Enter for newline)"></textarea>
@@ -538,6 +560,15 @@
             <input type="checkbox" id="check-show-original" checked />
             <span class="checkbox-label">Show original text</span>
           </label>
+          <div style="margin-top: 12px;">
+            <span class="field-label">Suggestion type</span>
+            <select id="select-suggestion-type">
+              <option value="target">Show target language (source language)</option>
+              <option value="translation">Show translation language</option>
+              <option value="both">Show both languages</option>
+            </select>
+            <p class="hint">Controls the language shown in Interview suggestions.</p>
+          </div>
         </div>
       </div>
 
@@ -648,61 +679,67 @@
         </div>
       </div>
 
-      <!-- Tab: Interview AI (RAG + LLM; secrets in OS keychain) -->
+      <!-- Tab: Interview AI -->
       <div class="settings-tab-content" id="tab-interview">
-        <div class="settings-section">
-          <span class="field-label">Interview LLM (suggested answers)</span>
-          <select id="select-interview-llm">
-            <option value="openai">OpenAI (GPT-4o mini)</option>
-            <option value="gemini">Google Gemini 2.0 Flash</option>
-            <option value="claude">Anthropic Claude 3.5 Haiku</option>
-          </select>
-          <p class="hint">API keys below are stored in the OS credential vault, not in settings.json.</p>
-        </div>
-
-        <div class="settings-section">
-          <div class="field-row pinecone-config-row">
-            <div class="field">
-              <span class="field-label">Pinecone index host</span>
+        <!-- Section: Pinecone -->
+        <div class="settings-section ai-section">
+          <div class="ai-section-header">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>
+            <span>Pinecone</span>
+          </div>
+          <div class="ai-fields-row">
+            <div class="ai-field ai-field--grow">
+              <label>Index host</label>
               <input type="text" id="interview-pinecone-host" placeholder="https://your-index-xxxx.svc.us-east1-aws.pinecone.io" autocomplete="off" />
             </div>
-            <div class="field">
-              <span class="field-label">Vector dimension</span>
+            <div class="ai-field ai-field--fixed">
+              <label>Dimension</label>
               <input type="number" id="interview-pinecone-dim" min="256" max="3072" step="1" value="1536" />
             </div>
           </div>
-          <p class="hint">Copy the HOST from Pinecone Console → Index → HOST. Use <strong>1536</strong> for OpenAI embeddings (default), or <strong>768</strong> only if your Pinecone index was created for Gemini <code>text-embedding-004</code>.</p>
+          <div class="ai-dim-hint">
+            <span class="ai-dim-hint-title">Common dimensions:</span>
+            <span class="ai-dim-chip" data-dim="1536">text-embedding-3-small · 1536</span>
+            <span class="ai-dim-chip" data-dim="1024">text-embedding-3-small · 1024</span>
+            <span class="ai-dim-chip" data-dim="768">text-embedding-3-small · 768</span>
+            <span class="ai-dim-chip" data-dim="3072">text-embedding-3-large · 3072</span>
+            <span class="ai-dim-chip" data-dim="768">Gemini text-embedding-004 · 768</span>
+          </div>
+          <div class="ai-field">
+            <label>Pinecone API Key</label>
+            <div class="input-group">
+              <input type="password" id="pinecone-api-key" autocomplete="off" placeholder="pcsk_…" />
+              <button class="icon-btn small btn-toggle-ai-key" data-target="pinecone-api-key" title="Show/Hide">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
         </div>
 
-        <div class="settings-section">
-          <span class="field-label">API keys (keychain)</span>
-          <div class="interview-key-row" data-provider="openai">
-            <span class="interview-key-label">OpenAI</span>
-            <input type="password" class="interview-key-input" autocomplete="off" placeholder="sk-…" />
-            <button type="button" class="interview-key-save secondary-btn">Save</button>
-            <button type="button" class="interview-key-clear secondary-btn">Clear</button>
-            <span class="interview-key-status">—</span>
+        <!-- Section: LLM -->
+        <div class="settings-section ai-section">
+          <div class="ai-section-header">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <span>LLM</span>
           </div>
-          <div class="interview-key-row" data-provider="gemini">
-            <span class="interview-key-label">Gemini</span>
-            <input type="password" class="interview-key-input" autocomplete="off" placeholder="AIza…" />
-            <button type="button" class="interview-key-save secondary-btn">Save</button>
-            <button type="button" class="interview-key-clear secondary-btn">Clear</button>
-            <span class="interview-key-status">—</span>
+          <div class="ai-fields-row">
+            <div class="ai-field ai-field--grow">
+              <label>URL</label>
+              <input type="text" id="llm-url" placeholder="https://api.openai.com/v1/chat/completions" autocomplete="off" />
+            </div>
+            <div class="ai-field ai-field--fixed">
+              <label>Model</label>
+              <input type="text" id="llm-model" placeholder="gpt-4o-mini" autocomplete="off" />
+            </div>
           </div>
-          <div class="interview-key-row" data-provider="claude">
-            <span class="interview-key-label">Claude</span>
-            <input type="password" class="interview-key-input" autocomplete="off" placeholder="sk-ant-…" />
-            <button type="button" class="interview-key-save secondary-btn">Save</button>
-            <button type="button" class="interview-key-clear secondary-btn">Clear</button>
-            <span class="interview-key-status">—</span>
-          </div>
-          <div class="interview-key-row" data-provider="pinecone">
-            <span class="interview-key-label">Pinecone</span>
-            <input type="password" class="interview-key-input" autocomplete="off" placeholder="pcsk_…" />
-            <button type="button" class="interview-key-save secondary-btn">Save</button>
-            <button type="button" class="interview-key-clear secondary-btn">Clear</button>
-            <span class="interview-key-status">—</span>
+          <div class="ai-field">
+            <label>API Key</label>
+            <div class="input-group">
+              <input type="password" id="llm-api-key" autocomplete="off" placeholder="sk-…" />
+              <button class="icon-btn small btn-toggle-ai-key" data-target="llm-api-key" title="Show/Hide">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
           </div>
         </div>
       </div>
