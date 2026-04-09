@@ -175,6 +175,8 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -194,26 +196,33 @@ jobs:
         run: |
           sdkmanager --install \
             "platform-tools" \
-            "platforms;android-34" \
-            "build-tools;34.0.0" \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
             "ndk;26.3.11579264"
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Init Android (Tauri)
-        run: npm run tauri android init
-
-      - name: Enforce minSdkVersion = 29
+      - name: Prepare Android signing keystore (Release tags)
+        env:
+          ANDROID_SIGNING_KEY: ${{ secrets.ANDROID_SIGNING_KEY }}
         run: |
-          echo "Patching src-tauri/gen/android/app/build.gradle.kts (minSdk=29)"
-          sed -i 's/minSdk = [0-9]\\+/minSdk = 29/g' src-tauri/gen/android/app/build.gradle.kts
-          grep -n "minSdk = " src-tauri/gen/android/app/build.gradle.kts
+          if [ -n "$ANDROID_SIGNING_KEY" ]; then
+            echo "Decoding Android keystore from secret..."
+            echo -n "$ANDROID_SIGNING_KEY" | base64 --decode > "$RUNNER_TEMP/myjavis-release.jks"
+            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/myjavis-release.jks" >> $GITHUB_ENV
+          else
+            echo "ANDROID_SIGNING_KEY not set; building unsigned release (will still produce APK)."
+          fi
 
       - name: Build Android (APK)
         env:
           ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
           ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+          ANDROID_KEYSTORE_PATH: ${{ env.ANDROID_KEYSTORE_PATH }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: npm run tauri android build -- --apk
 
       - name: Upload Android artifacts

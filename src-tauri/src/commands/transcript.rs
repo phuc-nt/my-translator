@@ -34,6 +34,7 @@ pub fn save_transcript(app: AppHandle, content: String) -> Result<String, String
 /// Open the transcript directory in the system file manager
 /// macOS: Finder, Windows: Explorer
 #[tauri::command]
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn open_transcript_dir(app: AppHandle) -> Result<(), String> {
     let dir = transcript_dir(&app)?;
 
@@ -49,6 +50,12 @@ pub fn open_transcript_dir(app: AppHandle) -> Result<(), String> {
         .spawn()
         .map_err(|e| format!("Failed to open transcript dir: {}", e))?;
     Ok(())
+}
+
+#[tauri::command]
+#[cfg(any(target_os = "android", target_os = "ios"))]
+pub fn open_transcript_dir(_app: AppHandle) -> Result<(), String> {
+    Err("open_transcript_dir is not supported on mobile.".to_string())
 }
 
 #[derive(Serialize)]

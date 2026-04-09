@@ -5,7 +5,7 @@ mod secrets;
 mod services;
 mod settings;
 
-use audio::microphone::MicCapture;
+use audio::MicCapture;
 use audio::SystemAudioCapture;
 use commands::audio::AudioState;
 use commands::local_pipeline::LocalPipelineState;
@@ -59,6 +59,7 @@ pub fn run() {
             commands::audio::start_capture,
             commands::audio::stop_capture,
             commands::audio::check_permissions,
+            commands::audio::request_media_projection,
             commands::transcript::save_transcript,
             commands::transcript::open_transcript_dir,
             commands::transcript::list_transcripts,

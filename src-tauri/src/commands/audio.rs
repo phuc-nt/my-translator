@@ -1,5 +1,5 @@
-use crate::audio::microphone::MicCapture;
 use crate::audio::SystemAudioCapture;
+use crate::audio::MicCapture;
 use serde::Serialize;
 use std::sync::mpsc;
 use std::sync::Mutex;
@@ -30,6 +30,19 @@ pub struct PermissionStatus {
     pub microphone: String,
 }
 
+/// Request MediaProjection permission on Android (no-op on desktop).
+#[tauri::command]
+pub fn request_media_projection() -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        crate::audio::android::request_media_projection()
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Ok(())
+    }
+}
+
 /// Start audio capture and forward data to the frontend via IPC channel
 #[tauri::command]
 pub fn start_capture(
@@ -42,18 +55,30 @@ pub fn start_capture(
 
     let receiver: mpsc::Receiver<Vec<u8>> = match source.as_str() {
         "system" => {
-            let sys = state.system_audio.lock().map_err(|e| e.to_string())?;
+            let sys = state
+                .system_audio
+                .lock()
+                .map_err(|_| "Lock error".to_string())?;
             sys.start()?
         }
         "microphone" => {
-            let mut mic = state.microphone.lock().map_err(|e| e.to_string())?;
+            let mut mic = state
+                .microphone
+                .lock()
+                .map_err(|_| "Lock error".to_string())?;
             mic.start()?
         }
         "both" => {
             // Start both sources and merge into a single receiver
-            let sys = state.system_audio.lock().map_err(|e| e.to_string())?;
+            let sys = state
+                .system_audio
+                .lock()
+                .map_err(|_| "Lock error".to_string())?;
             let sys_rx = sys.start()?;
-            let mut mic = state.microphone.lock().map_err(|e| e.to_string())?;
+            let mut mic = state
+                .microphone
+                .lock()
+                .map_err(|_| "Lock error".to_string())?;
             let mic_rx = mic.start()?;
 
             let (merged_tx, merged_rx) = mpsc::channel::<Vec<u8>>();
@@ -122,7 +147,10 @@ pub fn start_capture(
 
     // Store the forwarder so we can stop it later
     let forwarder = AudioForwarder { stop_flag };
-    let mut active = state.active_receiver.lock().map_err(|e| e.to_string())?;
+    let mut active = state
+        .active_receiver
+        .lock()
+        .map_err(|_| "Lock error".to_string())?;
     *active = Some(forwarder);
 
     Ok(())

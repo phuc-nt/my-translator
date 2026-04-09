@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles/main.css" />
+  <link rel="stylesheet" href="styles/mobile.css" />
 </head>
 
 <body>
@@ -130,6 +131,7 @@
 
     <!-- Content Area: sidebar + transcript side by side -->
     <div id="content-area">
+      <div id="mobile-overlay-backdrop" class="mobile-overlay-backdrop" aria-hidden="true"></div>
       <div id="sidebar" class="sidebar hidden">
         <button id="btn-new-conversation">+ New</button>
         <ul id="conversation-list"></ul>
@@ -228,6 +230,13 @@
         </div>
       </div>
     </div>
+
+    <!-- Mobile FAB: toggle Interview bottom sheet -->
+    <button id="btn-toggle-right-panel" class="mobile-fab" type="button" aria-label="Toggle Interview panel" style="display:none">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      </svg>
+    </button>
 
     <!-- Resize Handle -->
     <div id="resize-handle"></div>

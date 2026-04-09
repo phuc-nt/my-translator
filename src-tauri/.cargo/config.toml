@@ -1,0 +1,15 @@
+[env]
+# Help build scripts (cc crate) pick the correct Android NDK toolchain wrappers.
+# Requires NDK LLVM bin dir on PATH (Tauri CLI does this; CI should as well).
+CC_aarch64_linux_android = "aarch64-linux-android29-clang"
+CXX_aarch64_linux_android = "aarch64-linux-android29-clang++"
+
+CC_armv7_linux_androideabi = "armv7a-linux-androideabi29-clang"
+CXX_armv7_linux_androideabi = "armv7a-linux-androideabi29-clang++"
+
+CC_i686_linux_android = "i686-linux-android29-clang"
+CXX_i686_linux_android = "i686-linux-android29-clang++"
+
+CC_x86_64_linux_android = "x86_64-linux-android29-clang"
+CXX_x86_64_linux_android = "x86_64-linux-android29-clang++"
+

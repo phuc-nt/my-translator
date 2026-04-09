@@ -126,10 +126,25 @@ class App {
             const arch = await invoke('get_platform_info');
             const info = JSON.parse(arch);
             this.isAppleSilicon = (info.os === 'macos' && info.arch === 'aarch64');
+            this.isMobile = (info.os === 'android' || info.os === 'ios');
+            this.isAndroid = (info.os === 'android');
         } catch {
             // Fallback: check via navigator
             this.isAppleSilicon = navigator.platform === 'MacIntel' &&
                 navigator.userAgent.includes('Mac OS X');
+            const ua = (navigator.userAgent || '').toLowerCase();
+            this.isAndroid = ua.includes('android');
+            this.isMobile = this.isAndroid || /iphone|ipad|ipod/.test(ua);
+        }
+
+        if (this.isMobile) {
+            document.body.classList.add('mobile');
+        }
+
+        // Platform adaptations (Android)
+        if (this.isAndroid) {
+            await this._applyMobileDefaults();
+            this._filterTtsProviders();
         }
 
         if (!this.isAppleSilicon) {
@@ -147,6 +162,44 @@ class App {
         }
     }
 
+    async _applyMobileDefaults() {
+        // Android: system audio requires MediaProjection; default to mic for a smoother first-run.
+        const s = settingsManager.get();
+        const src = s.audio_source || 'system';
+        if (src === 'system') {
+            try {
+                await settingsManager.save({ audio_source: 'microphone' });
+            } catch {
+                // Non-fatal: we'll still continue with runtime defaults.
+            }
+        }
+    }
+
+    _filterTtsProviders() {
+        // Android: only keep Edge + Google (hide ElevenLabs + any future desktop-only providers).
+        const select = document.getElementById('select-tts-provider');
+        if (!select) return;
+
+        const allowed = new Set(['edge', 'google']);
+        Array.from(select.querySelectorAll('option')).forEach((opt) => {
+            const val = opt.getAttribute('value') || '';
+            if (!allowed.has(val)) opt.remove();
+        });
+
+        const s = settingsManager.get();
+        const provider = s.tts_provider || 'edge';
+        if (!allowed.has(provider)) {
+            // Update UI immediately; persist best-effort.
+            select.value = 'edge';
+            this._updateTTSProviderUI('edge');
+            settingsManager.save({ tts_provider: 'edge' }).catch(() => {});
+        }
+
+        // Also hide the removed provider settings blocks (if present).
+        const el = document.getElementById('tts-elevenlabs-settings');
+        if (el) el.style.display = 'none';
+    }
+
     // ─── Event Binding ──────────────────────────────────────
 
     _bindEvents() {
@@ -154,6 +207,31 @@ class App {
         document.getElementById('btn-toggle-sidebar').addEventListener('click', () => {
             this._toggleSidebar();
         });
+
+        // Mobile: close sidebar when tapping backdrop
+        document.getElementById('mobile-overlay-backdrop')?.addEventListener('click', () => {
+            if (!this.isMobile) return;
+            // Close whichever overlay is open
+            this._setMobileSheetOpen(false);
+            this.sidebarOpen = false;
+            document.body.classList.remove('sidebar-open');
+            document.getElementById('sidebar')?.classList.add('hidden');
+        });
+
+        // Mobile FAB: toggle Interview bottom sheet
+        document.getElementById('btn-toggle-right-panel')?.addEventListener('click', () => {
+            if (!this.isMobile) return;
+            if (this.currentTemplate !== 'Interview') return;
+            const open = !document.body.classList.contains('sheet-open');
+            this._setMobileSheetOpen(open);
+        });
+
+        // Mobile: auto-collapse bottom sheet when user scrolls transcript
+        document.getElementById('transcript-container')?.addEventListener('scroll', () => {
+            if (!this.isMobile) return;
+            if (!document.body.classList.contains('sheet-open')) return;
+            this._setMobileSheetOpen(false);
+        }, { passive: true });
 
         // New conversation
         document.getElementById('btn-new-conversation').addEventListener('click', () => {
@@ -222,7 +300,11 @@ class App {
             // stays in the same header position as the close button.
             const panel = document.getElementById('interview-suggestions-panel');
             if (panel) panel.style.display = '';
-            this._setRightPanelCollapsed(true);
+            if (this.isMobile) {
+                this._setMobileSheetOpen(false);
+            } else {
+                this._setRightPanelCollapsed(true);
+            }
             // Keep docked if it was docked.
         });
 
@@ -230,7 +312,11 @@ class App {
         document.getElementById('btn-open-suggestions')?.addEventListener('click', () => {
             if (this.currentTemplate !== 'Interview') return;
             this._interviewSuggestionsClosed = false;
-            this._setRightPanelCollapsed(false);
+            if (this.isMobile) {
+                this._setMobileSheetOpen(true);
+            } else {
+                this._setRightPanelCollapsed(false);
+            }
             if (this._interviewSuggestionsItems.length) return;
             const { transcriptContext, userDraft } = this._lastInterviewSuggestArgs || {};
             // Manual mode: do not auto-generate on open
@@ -1125,8 +1211,12 @@ class App {
             endpointDelay: settings.endpoint_delay || 3000,
         });
 
-        // Start audio capture — Rust batches audio every 200ms, JS just forwards
+        // If system audio is selected, request MediaProjection first (no-op on desktop).
         try {
+            if (this.currentSource === 'system' || this.currentSource === 'both') {
+                await invoke('request_media_projection');
+            }
+
             let audioChunkCount = 0;
 
             const channel = new window.__TAURI__.core.Channel();
@@ -1157,8 +1247,12 @@ class App {
         console.log('[App] Starting Local mode (MLX models)...');
         this._updateStatus('connecting');
 
-        // Step 0: Check audio permission FIRST (before loading models)
+        // Step 0: Check audio permission FIRST (before loading models).
+        // If system audio is selected, request MediaProjection first (no-op on desktop).
         try {
+            if (this.currentSource === 'system' || this.currentSource === 'both') {
+                await invoke('request_media_projection');
+            }
             await invoke('start_capture', {
                 source: this.currentSource,
                 channel: new window.__TAURI__.core.Channel(), // dummy channel for permission check
@@ -1658,6 +1752,9 @@ class App {
         this.sidebarOpen = !this.sidebarOpen;
         const sidebar = document.getElementById('sidebar');
         sidebar.classList.toggle('hidden', !this.sidebarOpen);
+        if (this.isMobile) {
+            document.body.classList.toggle('sidebar-open', this.sidebarOpen);
+        }
     }
 
     _adjustFontSize(delta) {
@@ -2030,6 +2127,9 @@ class App {
             this._interviewSuggestionsClosed = false;
         }
 
+        // Mobile: mark interview-active for FAB visibility
+        document.body.classList.toggle('interview-active', this.currentTemplate === 'Interview');
+
         // Update dropdown label
         const templateLabel = document.querySelector('#btn-template .template-trigger-label');
         if (templateLabel) templateLabel.textContent = this.currentTemplate || 'Template';
@@ -2044,17 +2144,24 @@ class App {
         }
         if (this.currentTemplate !== 'Interview') {
             this._interviewSuggestGen += 1;
+            if (this.isMobile) this._setMobileSheetOpen(false);
         } else {
-            // Always show the right-panel toggle in Interview mode (even before suggestions exist).
+            // Always show the panel in Interview mode (even before suggestions exist).
             if (sugPanel) sugPanel.style.display = '';
-            this._dockInterviewSuggestionsRight();
-            // Default to collapsed rail until user opens (and/or suggestions arrive).
-            this._setRightPanelCollapsed(true);
+            if (this.isMobile) {
+                this._undockInterviewSuggestions();
+                this._setMobileSheetOpen(false);
+            } else {
+                this._dockInterviewSuggestionsRight();
+                // Default to collapsed rail until user opens (and/or suggestions arrive).
+                this._setRightPanelCollapsed(true);
+            }
             this._scheduleInterviewIngest();
         }
     }
 
     _dockInterviewSuggestionsRight() {
+        if (this.isMobile) return;
         const panel = document.getElementById('interview-suggestions-panel');
         const right = document.getElementById('right-panel');
         const resizer = document.getElementById('right-panel-resizer');
@@ -2126,6 +2233,17 @@ class App {
         contentArea.classList.toggle('right-panel-collapsed', this._rightPanelCollapsed);
         btnOpen.style.display = this._rightPanelCollapsed ? '' : 'none';
         btnClose.style.display = this._rightPanelCollapsed ? 'none' : '';
+    }
+
+    _setMobileSheetOpen(open) {
+        if (!this.isMobile) return;
+        document.body.classList.toggle('sheet-open', !!open);
+        // Ensure sidebar state doesn't conflict with sheet UX.
+        if (open) {
+            this.sidebarOpen = false;
+            document.body.classList.remove('sidebar-open');
+            document.getElementById('sidebar')?.classList.add('hidden');
+        }
     }
 
     _undockInterviewSuggestions() {

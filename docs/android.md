@@ -12,6 +12,13 @@ This project can build an Android APK using Tauri's Android support.
 Ensure these env vars are set:
 - `ANDROID_SDK_ROOT` (or `ANDROID_HOME`)
 
+### Windows note (symlinks)
+
+On Windows, `tauri android build` may fail when it tries to create a symlink for `jniLibs` unless symlinks are allowed.
+
+- Enable **Developer Mode** (recommended), or
+- Run the terminal as **Administrator**
+
 ### Init (one-time)
 
 ```bash
