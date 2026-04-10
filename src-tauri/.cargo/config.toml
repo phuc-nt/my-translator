@@ -13,3 +13,14 @@ CXX_i686_linux_android = "i686-linux-android29-clang++"
 CC_x86_64_linux_android = "x86_64-linux-android29-clang"
 CXX_x86_64_linux_android = "x86_64-linux-android29-clang++"
 
+[target.aarch64-linux-android]
+rustflags = ["-C", "link-arg=-lc++_shared"]
+
+[target.armv7-linux-androideabi]
+rustflags = ["-C", "link-arg=-lc++_shared"]
+
+[target.i686-linux-android]
+rustflags = ["-C", "link-arg=-lc++_shared"]
+
+[target.x86_64-linux-android]
+rustflags = ["-C", "link-arg=-lc++_shared"]
