@@ -36,6 +36,7 @@ const DEFAULT_SETTINGS = {
   llm_model: '',
   llm_api_key: '',
   suggestion_type: 'translation',
+  app_mode: null,
 };
 
 class SettingsManager {

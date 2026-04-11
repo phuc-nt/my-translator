@@ -160,7 +160,7 @@
     </div>
 
     <!-- Chat Panel (UI-only) -->
-    <div id="chat-panel">
+    <div id="chat-panel" style="display:none">
       <div class="chat-input-row">
         <div class="chat-controls">
           <div class="font-controls">
@@ -175,16 +175,6 @@
           </div>
         </div>
         <div class="chat-input-wrap">
-          <div class="chat-template" id="template-dropdown">
-            <button type="button" class="template-trigger" id="btn-template" aria-haspopup="menu" aria-expanded="false">
-              <span class="template-trigger-label">Template</span>
-              <span class="template-caret">▾</span>
-            </button>
-            <div class="template-menu" id="menu-template" role="menu" aria-hidden="true">
-              <button type="button" class="template-item" role="menuitem" data-insert="Interview: ">Interview</button>
-              <button type="button" class="template-item" role="menuitem" data-insert="Meeting: ">Meeting</button>
-            </div>
-          </div>
           <div id="interview-suggestions-panel" class="interview-suggestions-panel" style="display:none" aria-live="polite">
             <div class="interview-suggestions-header">
               <span>Suggested answers</span>
@@ -570,6 +560,15 @@
             <span class="checkbox-label">Show original text</span>
           </label>
           <div style="margin-top: 12px;">
+            <span class="field-label">Mode</span>
+            <select id="select-app-mode">
+              <option value="">None</option>
+              <option value="Interview">Interview</option>
+              <option value="Meeting">Meeting</option>
+            </select>
+            <p class="hint">Interview mode enables the chat input and answer suggestions.</p>
+          </div>
+          <div style="margin-top: 12px;">
             <span class="field-label">Suggestion type</span>
             <select id="select-suggestion-type">
               <option value="target">Show target language (source language)</option>
@@ -758,7 +757,7 @@
         <div class="settings-section about-info">
           <div class="about-app-header">
             <span class="about-app-name">MyJavis</span>
-            <span class="about-app-version" id="about-version">v0.5.0</span>
+            <span class="about-app-version" id="about-version">v1.0.0</span>
           </div>
           <p class="hint">Real-time speech translator for macOS & Windows</p>
         </div>

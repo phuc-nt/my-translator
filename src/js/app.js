@@ -71,6 +71,13 @@ class App {
         // Load settings
         await settingsManager.load();
 
+        // Set version from Tauri
+        try {
+            const ver = await window.__TAURI__.app.getVersion();
+            const el = document.getElementById('about-version');
+            if (el && ver) el.textContent = `v${ver}`;
+        } catch { /* non-fatal */ }
+
         // Init transcript UI
         const transcriptContainer = document.getElementById('transcript-content');
         this.transcriptUI = new TranscriptUI(transcriptContainer);
@@ -286,7 +293,6 @@ class App {
             });
         });
 
-        this._initTemplateDropdown();
         this._initInterviewUploads();
         this._bindInterviewSettingsKeys();
         this._bindDimChips();
@@ -778,6 +784,8 @@ class App {
         if (llmModel) llmModel.value = s.llm_model || '';
         const llmKey = document.getElementById('llm-api-key');
         if (llmKey) llmKey.value = s.llm_api_key || '';
+        const appMode = document.getElementById('select-app-mode');
+        if (appMode) appMode.value = s.app_mode || '';
         const suggestionType = document.getElementById('select-suggestion-type');
         if (suggestionType) {
             const v = s.suggestion_type || 'translation';
@@ -867,6 +875,8 @@ class App {
         settings.llm_api_key = document.getElementById('llm-api-key')?.value?.trim() || '';
         const st = document.getElementById('select-suggestion-type')?.value || 'translation';
         settings.suggestion_type = ['target', 'translation', 'both'].includes(st) ? st : 'translation';
+        const am = document.getElementById('select-app-mode')?.value || '';
+        settings.app_mode = ['Interview', 'Meeting'].includes(am) ? am : null;
 
         try {
             await settingsManager.save(settings);
@@ -878,6 +888,21 @@ class App {
     }
 
     // ─── Apply Settings ────────────────────────────────────
+
+    _updateChatInputState() {
+        const isInterview = this.currentTemplate === 'Interview';
+        const panel = document.getElementById('chat-panel');
+        if (panel) panel.style.display = isInterview ? '' : 'none';
+        const input = document.getElementById('chat-input');
+        if (!input) return;
+        if (!isInterview) return;
+        const hasKey = !!(settingsManager.get().llm_api_key?.trim());
+        input.disabled = !hasKey;
+        input.style.display = '';
+        input.placeholder = hasKey
+            ? 'Type a message… (Enter to send, Shift+Enter for newline)'
+            : 'Add LLM API key in Settings to enable chat';
+    }
 
     _applySettings(settings) {
         // Update overlay opacity
@@ -911,6 +936,14 @@ class App {
         // TTS is always OFF on app start — user must toggle on each session
         this.ttsEnabled = false;
         this._updateTTSButton();
+
+        // Sync mode from settings
+        const savedMode = settings.app_mode || null;
+        if (savedMode !== this.currentTemplate) {
+            this._setTemplateMode(savedMode);
+        }
+
+        this._updateChatInputState();
     }
 
     // ─── TTS Control ──────────────────────────────────────
@@ -2158,6 +2191,7 @@ class App {
             }
             this._scheduleInterviewIngest();
         }
+        this._updateChatInputState();
     }
 
     _dockInterviewSuggestionsRight() {
@@ -2414,9 +2448,11 @@ class App {
                 } catch (e) {
                     console.warn('[Interview] save user message', e);
                 }
-                // Manual mode: store draft context, but don't auto-generate
                 this._lastInterviewSuggestArgs = { transcriptContext: null, userDraft: text };
-                //this._setInterviewSuggestionsStatus('Ready — click ⟳ to generate');
+                this._interviewSuggestionsClosed = false;
+                this._setRightPanelCollapsed(false);
+                this._markInterviewSuggestStart('draft');
+                this._scheduleInterviewSuggestions({ transcriptContext: null, userDraft: text });
             })();
         }
     }
