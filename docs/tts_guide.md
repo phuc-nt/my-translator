@@ -1,20 +1,21 @@
 # TTS (Text-to-Speech) Guide
 
-My Translator can **read translations aloud** as they appear — like having a personal interpreter. Three providers available:
+My Translator can **read translations aloud** as they appear — like having a personal interpreter. Four providers available:
 
 ## Provider Comparison
 
-| | Edge TTS ⭐ | Google Chirp 3 HD | ElevenLabs |
-|-|-------------|-------------------|------------|
-| **Cost** | Free | Free 1M chars/mo, then $30/1M | ~$5–$22/month |
-| **Quality** | Natural, clear | Near-human, expressive | Very natural, expressive |
-| **Vietnamese** | ✅ HoaiMy, NamMinh | ✅ 6 voices (Aoede, Kore, Charon...) | ✅ Yes |
-| **Setup** | None — works instantly | Google Cloud API key | ElevenLabs API key |
-| **Speed control** | ✅ -50% to +100% | ✅ 0.5x to 2.0x | ❌ |
-| **Latency** | ~300-500ms | ~200-500ms | ~500-800ms |
-| **Best for** | Most users | Best Vietnamese quality | Voice cloning |
+| | Edge TTS ⭐ | Google Chirp 3 HD | ElevenLabs | 60db.ai |
+|-|-------------|-------------------|------------|---------|
+| **Cost** | Free | Free 1M chars/mo, then $30/1M | ~$5–$22/month | $0.00002/char |
+| **Quality** | Natural, clear | Near-human, expressive | Very natural, expressive | Natural, clear |
+| **Vietnamese** | ✅ HoaiMy, NamMinh | ✅ 6 voices (Aoede, Kore, Charon...) | ✅ Yes | ❌ |
+| **Indian Languages** | ❌ | ❌ | ❌ | ✅ Hindi, Tamil, Bengali + 7 more |
+| **Setup** | None — works instantly | Google Cloud API key | ElevenLabs API key | 60db.ai API key |
+| **Speed control** | ✅ -50% to +100% | ✅ 0.5x to 2.0x | ❌ | ✅ 0.5x to 2.0x |
+| **Latency** | ~300-500ms | ~200-500ms | ~500-800ms | ~200-500ms |
+| **Best for** | Most users | Best Vietnamese quality | Voice cloning | Indian language specialist |
 
-**Bottom line**: Edge TTS is great for most users. Google Chirp 3 HD offers significantly better Vietnamese quality with a generous free tier. ElevenLabs is for advanced use cases like voice cloning.
+**Bottom line**: Edge TTS is great for most users. Google Chirp 3 HD offers significantly better Vietnamese quality with a generous free tier. ElevenLabs is for advanced use cases like voice cloning. **60db.ai** is the go-to for Indian languages (Hindi, Tamil, Bengali, Telugu, etc.) with dynamic voice selection.
 
 ---
 
@@ -105,6 +106,54 @@ ElevenLabs specializes in **AI voice technology**, known for extremely natural v
 2. Paste your API key
 3. Choose a voice
 4. Click **Save & Close**
+
+---
+
+## 60db.ai (Indian Languages)
+
+### What is it?
+
+60db.ai specializes in **Indian language text-to-speech**, supporting Hindi, Bengali, Tamil, Telugu, Gujarati, Kannada, Malayalam, Marathi, Punjabi, and English. Language is auto-detected from the input text.
+
+### Key Features
+
+- **Dynamic voice selection** — voices are fetched from your account, including any custom cloned voices
+- **10 Indian languages** + English
+- **WebSocket streaming** for low-latency real-time playback
+- **Speed, stability, and similarity controls** for fine-tuning voice output
+
+### Pricing
+
+- **$0.00002 per character** (~$0.02 per 1K characters)
+- **$0.01 minimum per context**
+
+### How to Get API Key
+
+1. Go to [60db.ai](https://60db.ai) → create an account
+2. Go to Dashboard → **API Keys**
+3. Create a new API key (format: `sk_live_...`)
+
+### Setup in App
+
+1. In app: Settings → TTS → select **🇮🇳 60db.ai**
+2. Paste your API key — voices will load automatically
+3. Choose a voice, adjust speed/stability/similarity if needed
+4. Click **Save & Close**
+
+### Supported Languages
+
+| Language | Code |
+|----------|------|
+| English | en |
+| Hindi | hi |
+| Bengali | bn |
+| Tamil | ta |
+| Telugu | te |
+| Gujarati | gu |
+| Kannada | kn |
+| Malayalam | ml |
+| Marathi | mr |
+| Punjabi | pa |
 
 ---
 

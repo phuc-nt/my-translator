@@ -25,7 +25,7 @@ System Audio / Mic → 16kHz PCM ─────┼── ⚡ OpenAI Realtime (t
                                     ├── 🌏 Qwen LiveTranslate Flash (text only) │
                                     └── 🖥️  Local MLX  (text, offline)   ─┘
                                                                             ↓ (optional, text engines)
-                                                  TTS (Edge / Google / ElevenLabs) → 🔊
+                                                  TTS (Edge / Google / ElevenLabs / 60db.ai) → 🔊
 ```
 
 Four translation engines, pick what fits your call:
@@ -36,7 +36,7 @@ Four translation engines, pick what fits your call:
 | **Latency** | ~2 s (Soniox / OpenAI) · ~4 s (Qwen) · ~10 s (Local) |
 | **Languages** | 70+ source → any target (Soniox), 13 targets (OpenAI), 60+ source+target (Qwen), JA/EN/ZH/KO → VI/EN (Local) |
 | **Cost** | ~$0.12/hr (Soniox) · ~$4/hr (OpenAI, includes voice) · Free preview (Qwen, text-only) · Free (Local) |
-| **TTS** | 3 providers for Soniox / Local (Edge free, Google, ElevenLabs) — OpenAI streams its own voice (off by default), Qwen text-only |
+| **TTS** | 4 providers for Soniox / Local (Edge free, Google, ElevenLabs, 60db.ai) — OpenAI streams its own voice (off by default), Qwen text-only |
 | **Platform** | macOS (ARM + Intel) · Windows · Local mode = Apple Silicon only |
 | **Signed** | ✅ macOS signed & notarized |
 | **Auto-Update** | ✅ Built-in, check & install from Settings |
@@ -79,15 +79,16 @@ Translate conversations between two languages simultaneously — ideal for bilin
 
 ### 🎙️ TTS Narration
 
-Read translations aloud in one-way mode — 3 providers:
+Read translations aloud in one-way mode — 4 providers:
 
-| | Edge TTS ⭐ | Google Chirp 3 HD | ElevenLabs |
-|-|-------------|-------------------|------------|
-| **Cost** | Free | Free 1M chars/mo | ~$5/mo+ |
-| **Quality** | ★★★★☆ Neural | ★★★★★ Near-human | ★★★★★ Premium |
-| **Vietnamese** | ✅ 2 voices | ✅ 6 voices | ✅ Yes |
-| **Setup** | None | Google Cloud API key | API key |
-| **Speed control** | ✅ | ✅ 0.5x–2.0x | ❌ |
+| | Edge TTS ⭐ | Google Chirp 3 HD | ElevenLabs | 60db.ai |
+|-|-------------|-------------------|------------|---------|
+| **Cost** | Free | Free 1M chars/mo | ~$5/mo+ | $0.00002/char |
+| **Quality** | ★★★★☆ Neural | ★★★★★ Near-human | ★★★★★ Premium | ★★★★☆ Natural |
+| **Vietnamese** | ✅ 2 voices | ✅ 6 voices | ✅ Yes | ❌ |
+| **Indian Languages** | ❌ | ❌ | ❌ | ✅ Hindi, Tamil, Bengali + 7 more |
+| **Setup** | None | Google Cloud API key | API key | API key |
+| **Speed control** | ✅ | ✅ 0.5x–2.0x | ❌ | ✅ 0.5x–2.0x |
 
 TTS is **OFF by default** — toggle with the TTS button or `⌘ T`.
 
@@ -146,6 +147,7 @@ Experimental offline mode using MLX + Whisper + Gemma — runs 100% on-device. J
 - **[Edge TTS](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/index-text-to-speech)** — Free neural TTS (default)
 - **[Google Cloud TTS](https://cloud.google.com/text-to-speech)** — Chirp 3 HD (near-human quality)
 - **[ElevenLabs](https://elevenlabs.io)** — Premium TTS
+- **[60db.ai](https://60db.ai)** — Indian language TTS specialist
 
 ---
 

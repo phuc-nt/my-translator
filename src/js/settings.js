@@ -26,6 +26,11 @@ const DEFAULT_SETTINGS = {
   edge_tts_voice: 'vi-VN-HoaiMyNeural',
   edge_tts_speed: 50,
   tts_auto_read: true,
+  sixtydb_api_key: '',
+  sixtydb_voice_id: 'fbb75ed2-975a-40c7-9e06-38e30524a9a1',
+  sixtydb_speed: 1.0,
+  sixtydb_stability: 50,
+  sixtydb_similarity: 50,
 };
 
 class SettingsManager {
