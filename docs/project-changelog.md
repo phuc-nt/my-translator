@@ -7,6 +7,23 @@ Format: `## v<version> - <YYYY-MM-DD>` followed by content until the next `## v`
 
 ---
 
+## v0.7.3 - 2026-06-08
+
+### Changes
+
+- **60db.ai TTS provider added** as a 4th option alongside Edge TTS, Google Chirp 3 HD, and ElevenLabs. WebSocket streaming for low-latency real-time playback. Specializes in Indic languages: Hindi, Bengali, Tamil, Telugu, Gujarati, Kannada, Malayalam, Marathi, Punjabi, and English.
+- **Dynamic voice fetching** — 60db.ai voices (default + user custom/cloned) are fetched from the API and grouped by language in the voice dropdown. Voices load automatically when an API key is entered.
+- **Speed, stability, and similarity controls** for fine-tuning 60db.ai voice output (0.5x–2.0x speed, 0–100 stability/similarity).
+
+### Technical
+
+- `src/js/sixtydb-tts.js` (new): WebSocket streaming TTS client. Connect → `create_context` → `send_text` + `flush_context` per synthesis. Context reuse across multiple `speak()` calls. Auto-reconnect (3 attempts, 2s/4s/6s backoff). TTFB instrumentation. Static methods `fetchVoices(apiKey)` and `fetchDefaultVoices()` for dynamic voice population.
+- `src-tauri/src/settings.rs`: 5 new fields (`sixtydb_api_key`, `sixtydb_voice_id`, `sixtydb_speed`, `sixtydb_stability`, `sixtydb_similarity`). `#[serde(default)]` handles migration for existing users.
+- `src/js/app.js`: 12 insertion points wiring 60db into TTS provider routing — imports, callback loops, key validation, `_getActiveTTS`, `_configureTTS`, `_updateTTSProviderUI`, `_populateSettingsForm`, `_saveSettingsFromForm`, `stop`, `start`, and new `_fetchAndPopulateSixtydbVoices` method.
+- `src/index.html`: Provider dropdown option `🇮🇳 60db.ai`, settings panel with API key input, dynamic voice select, speed/stability/similarity sliders.
+
+---
+
 ## v0.7.2 - 2026-05-26
 
 ### Changes

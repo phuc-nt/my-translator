@@ -9,6 +9,7 @@ import { sonioxClient } from './soniox.js';
 import { elevenLabsTTS } from './elevenlabs-tts.js';
 import { googleTTS } from './google-tts.js';
 import { edgeTTSRust } from './edge-tts.js';
+import { sixtyDbTTS, SixtyDbTTS } from './sixtydb-tts.js';
 import { audioPlayer } from './audio-player.js';
 import { updater } from './updater.js';
 import { sessionStore } from './session-store.js';
@@ -73,12 +74,12 @@ class App {
         audioPlayer.init();
 
         // Wire TTS audio callbacks for providers that use audioPlayer
-        for (const tts of [elevenLabsTTS, edgeTTSRust, googleTTS]) {
+        for (const tts of [elevenLabsTTS, edgeTTSRust, googleTTS, sixtyDbTTS]) {
             tts.onAudioChunk = (base64Audio, isFinal) => {
                 audioPlayer.enqueue(base64Audio);
             };
         }
-        for (const tts of [elevenLabsTTS, edgeTTSRust, googleTTS]) {
+        for (const tts of [elevenLabsTTS, edgeTTSRust, googleTTS, sixtyDbTTS]) {
             tts.onError = (error) => {
                 console.error('[TTS]', error);
                 this._showToast(error, 'error');
@@ -481,6 +482,36 @@ class App {
             if (label) label.textContent = parseFloat(e.target.value).toFixed(1) + 'x';
         });
 
+        // 60db.ai TTS settings
+        document.getElementById('btn-toggle-sixtydb-key')?.addEventListener('click', () => {
+            const input = document.getElementById('input-sixtydb-key');
+            if (input) input.type = input.type === 'password' ? 'text' : 'password';
+        });
+
+        document.getElementById('range-sixtydb-speed')?.addEventListener('input', (e) => {
+            const label = document.getElementById('sixtydb-speed-value');
+            if (label) label.textContent = parseFloat(e.target.value).toFixed(1) + 'x';
+        });
+
+        document.getElementById('range-sixtydb-stability')?.addEventListener('input', (e) => {
+            const label = document.getElementById('sixtydb-stability-value');
+            if (label) label.textContent = e.target.value;
+        });
+
+        document.getElementById('range-sixtydb-similarity')?.addEventListener('input', (e) => {
+            const label = document.getElementById('sixtydb-similarity-value');
+            if (label) label.textContent = e.target.value;
+        });
+
+        // 60db.ai: debounced API key input → fetch voices
+        let sixtydbKeyTimer;
+        document.getElementById('input-sixtydb-key')?.addEventListener('input', (e) => {
+            clearTimeout(sixtydbKeyTimer);
+            sixtydbKeyTimer = setTimeout(() => {
+                this._fetchAndPopulateSixtydbVoices(e.target.value.trim());
+            }, 500);
+        });
+
         // Add translation term row
         document.getElementById('btn-add-term')?.addEventListener('click', () => {
             this._addTermRow('', '');
@@ -748,6 +779,27 @@ class App {
         if (googleSpeedSlider) googleSpeedSlider.value = googleSpeed;
         if (googleSpeedLabel) googleSpeedLabel.textContent = googleSpeed + 'x';
 
+        // 60db.ai TTS settings
+        const sixtydbKeyInput = document.getElementById('input-sixtydb-key');
+        if (sixtydbKeyInput) sixtydbKeyInput.value = s.sixtydb_api_key || '';
+        const sixtydbVoiceSelect = document.getElementById('select-sixtydb-voice');
+        if (sixtydbVoiceSelect) sixtydbVoiceSelect.value = s.sixtydb_voice_id || 'fbb75ed2-975a-40c7-9e06-38e30524a9a1';
+        const sixtydbSpeedSlider = document.getElementById('range-sixtydb-speed');
+        const sixtydbSpeedLabel = document.getElementById('sixtydb-speed-value');
+        const sixtydbSpeed = s.sixtydb_speed || 1.0;
+        if (sixtydbSpeedSlider) sixtydbSpeedSlider.value = sixtydbSpeed;
+        if (sixtydbSpeedLabel) sixtydbSpeedLabel.textContent = sixtydbSpeed.toFixed(1) + 'x';
+        const sixtydbStabilitySlider = document.getElementById('range-sixtydb-stability');
+        const sixtydbStabilityLabel = document.getElementById('sixtydb-stability-value');
+        const sixtydbStability = s.sixtydb_stability !== undefined ? s.sixtydb_stability : 50;
+        if (sixtydbStabilitySlider) sixtydbStabilitySlider.value = sixtydbStability;
+        if (sixtydbStabilityLabel) sixtydbStabilityLabel.textContent = sixtydbStability;
+        const sixtydbSimilaritySlider = document.getElementById('range-sixtydb-similarity');
+        const sixtydbSimilarityLabel = document.getElementById('sixtydb-similarity-value');
+        const sixtydbSimilarity = s.sixtydb_similarity !== undefined ? s.sixtydb_similarity : 50;
+        if (sixtydbSimilaritySlider) sixtydbSimilaritySlider.value = sixtydbSimilarity;
+        if (sixtydbSimilarityLabel) sixtydbSimilarityLabel.textContent = sixtydbSimilarity;
+
         // TTS provider
         const providerSelect = document.getElementById('select-tts-provider');
         if (providerSelect) {
@@ -820,6 +872,11 @@ class App {
         settings.google_tts_api_key = document.getElementById('input-google-tts-key')?.value.trim() || '';
         settings.google_tts_voice = document.getElementById('select-google-voice')?.value || 'vi-VN-Chirp3-HD-Aoede';
         settings.google_tts_speed = parseFloat(document.getElementById('range-google-speed')?.value || 1.0);
+        settings.sixtydb_api_key = document.getElementById('input-sixtydb-key')?.value.trim() || '';
+        settings.sixtydb_voice_id = document.getElementById('select-sixtydb-voice')?.value || 'fbb75ed2-975a-40c7-9e06-38e30524a9a1';
+        settings.sixtydb_speed = parseFloat(document.getElementById('range-sixtydb-speed')?.value || 1.0);
+        settings.sixtydb_stability = parseInt(document.getElementById('range-sixtydb-stability')?.value || 50);
+        settings.sixtydb_similarity = parseInt(document.getElementById('range-sixtydb-similarity')?.value || 50);
         settings.tts_enabled = false;
 
         try {
@@ -880,6 +937,11 @@ class App {
             this._showView('settings');
             return;
         }
+        if (provider === 'sixtydb' && !settings.sixtydb_api_key) {
+            this._showToast('Add 60db.ai API key in Settings → TTS', 'error');
+            this._showView('settings');
+            return;
+        }
 
         this.ttsEnabled = !this.ttsEnabled;
         this._updateTTSButton();
@@ -892,7 +954,7 @@ class App {
                 tts.connect();
                 audioPlayer.resume();
             }
-            const label = { edge: 'Edge TTS (Free)', google: 'Google Chirp 3 HD', elevenlabs: 'ElevenLabs' }[provider] || provider;
+            const label = { edge: 'Edge TTS (Free)', google: 'Google Chirp 3 HD', elevenlabs: 'ElevenLabs', sixtydb: '60db.ai' }[provider] || provider;
             this._showToast(`TTS narration ON 🔊 (${label})`, 'success');
         } else {
             tts.disconnect();
@@ -906,6 +968,7 @@ class App {
         const provider = settings.tts_provider || 'edge';
         if (provider === 'elevenlabs') return elevenLabsTTS;
         if (provider === 'google') return googleTTS;
+        if (provider === 'sixtydb') return sixtyDbTTS;
         return edgeTTSRust;
     }
 
@@ -924,6 +987,14 @@ class App {
                 voice: voice,
                 languageCode: langCode,
                 speakingRate: settings.google_tts_speed || 1.0,
+            });
+        } else if (provider === 'sixtydb') {
+            tts.configure({
+                apiKey: settings.sixtydb_api_key,
+                voiceId: settings.sixtydb_voice_id || 'fbb75ed2-975a-40c7-9e06-38e30524a9a1',
+                speed: settings.sixtydb_speed || 1.0,
+                stability: settings.sixtydb_stability !== undefined ? settings.sixtydb_stability : 50,
+                similarity: settings.sixtydb_similarity !== undefined ? settings.sixtydb_similarity : 50,
             });
         } else {
             tts.configure({
@@ -972,9 +1043,11 @@ class App {
         const ed = document.getElementById('tts-edge-settings');
         const go = document.getElementById('tts-google-settings');
         const el = document.getElementById('tts-elevenlabs-settings');
+        const db = document.getElementById('tts-sixtydb-settings');
         if (ed) ed.style.display = provider === 'edge' ? '' : 'none';
         if (go) go.style.display = provider === 'google' ? '' : 'none';
         if (el) el.style.display = provider === 'elevenlabs' ? '' : 'none';
+        if (db) db.style.display = provider === 'sixtydb' ? '' : 'none';
         // Update hint text
         const hint = document.getElementById('tts-provider-hint');
         if (hint) {
@@ -982,8 +1055,98 @@ class App {
                 edge: 'Free, natural voices — no API key needed',
                 google: 'Near-human quality — requires Google Cloud API key (1M chars/month free)',
                 elevenlabs: 'Premium quality — requires ElevenLabs API key',
+                sixtydb: 'Indian language specialist — Hindi, Tamil, Bengali & more — requires API key',
             };
             hint.textContent = hints[provider] || '';
+        }
+        // Fetch 60db voices dynamically when provider is selected and key is present
+        if (provider === 'sixtydb') {
+            const settings = settingsManager.get();
+            const apiKey = document.getElementById('input-sixtydb-key')?.value.trim() || settings.sixtydb_api_key;
+            if (apiKey) {
+                this._fetchAndPopulateSixtydbVoices(apiKey);
+            }
+        }
+    }
+
+    /**
+     * Fetch voices from 60db.ai and populate the voice dropdown.
+     * Merges default voices + user's custom voices, grouped by language.
+     */
+    async _fetchAndPopulateSixtydbVoices(apiKey) {
+        const select = document.getElementById('select-sixtydb-voice');
+        const statusEl = document.getElementById('sixtydb-voice-status');
+        if (!select) return;
+
+        const savedValue = select.value;
+
+        if (!apiKey) {
+            select.innerHTML = '<option value="fbb75ed2-975a-40c7-9e06-38e30524a9a1">Default Voice</option>';
+            if (statusEl) statusEl.textContent = '';
+            return;
+        }
+
+        if (statusEl) statusEl.textContent = 'Loading voices...';
+        select.disabled = true;
+
+        try {
+            // Fetch both default and user voices in parallel
+            const [defaultVoices, userVoices] = await Promise.allSettled([
+                SixtyDbTTS.fetchDefaultVoices(),
+                apiKey ? SixtyDbTTS.fetchVoices(apiKey) : Promise.resolve([]),
+            ]);
+
+            const defaults = defaultVoices.status === 'fulfilled' ? defaultVoices.value : [];
+            const customs = userVoices.status === 'fulfilled' ? userVoices.value : [];
+            const allVoices = [...defaults, ...customs];
+
+            if (allVoices.length === 0) {
+                select.innerHTML = '<option value="fbb75ed2-975a-40c7-9e06-38e30524a9a1">Default Voice</option>';
+                if (statusEl) statusEl.textContent = 'No voices available';
+                return;
+            }
+
+            // Group by language_name
+            const groups = {};
+            for (const v of allVoices) {
+                const lang = v.labels?.language_name || 'Other';
+                if (!groups[lang]) groups[lang] = [];
+                groups[lang].push(v);
+            }
+
+            select.innerHTML = '';
+            const sortedLangs = Object.keys(groups).sort();
+            for (const lang of sortedLangs) {
+                const group = document.createElement('optgroup');
+                group.label = lang;
+                for (const v of groups[lang]) {
+                    const opt = document.createElement('option');
+                    opt.value = v.voice_id;
+                    const gender = v.labels?.gender || '';
+                    const accent = v.labels?.accent || '';
+                    const suffix = v.is_native ? '' : ' ⭐';
+                    opt.textContent = `${v.name}${gender ? ' — ' + gender : ''}${accent ? ' (' + accent + ')' : ''}${suffix}`;
+                    group.appendChild(opt);
+                }
+                select.appendChild(group);
+            }
+
+            // Restore saved selection if it still exists
+            const options = Array.from(select.options).map(o => o.value);
+            select.value = options.includes(savedValue) ? savedValue : (options[0] || '');
+
+            const totalVoices = allVoices.length;
+            const customCount = customs.length;
+            const statusText = customCount > 0
+                ? `${totalVoices} voices loaded (${customCount} custom)`
+                : `${totalVoices} voices loaded`;
+            if (statusEl) statusEl.textContent = statusText;
+        } catch (err) {
+            console.error('[60db] Voice fetch failed:', err);
+            select.innerHTML = '<option value="fbb75ed2-975a-40c7-9e06-38e30524a9a1">Default Voice</option>';
+            if (statusEl) statusEl.textContent = 'Failed to load voices — check API key';
+        } finally {
+            select.disabled = false;
         }
     }
 
@@ -1430,6 +1593,13 @@ class App {
         // Check ElevenLabs key only if TTS is enabled AND provider is elevenlabs
         if (this.ttsEnabled && settings.tts_provider === 'elevenlabs' && !settings.elevenlabs_api_key) {
             this._showToast('TTS is ON but ElevenLabs API key is missing. Add it in Settings or disable TTS.', 'error');
+            this._showView('settings');
+            return;
+        }
+
+        // Check 60db.ai key only if TTS is enabled AND provider is sixtydb
+        if (this.ttsEnabled && settings.tts_provider === 'sixtydb' && !settings.sixtydb_api_key) {
+            this._showToast('TTS is ON but 60db.ai API key is missing. Add it in Settings or disable TTS.', 'error');
             this._showView('settings');
             return;
         }
@@ -2014,6 +2184,7 @@ class App {
         // Stop TTS
         elevenLabsTTS.disconnect();
         edgeTTSRust.disconnect();
+        sixtyDbTTS.disconnect();
 
         audioPlayer.stop();
 

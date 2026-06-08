@@ -609,6 +609,7 @@
             <option value="edge">🎙️ Edge TTS — Free</option>
             <option value="google">🌐 Google Chirp 3 HD — Premium</option>
             <option value="elevenlabs">✨ ElevenLabs — Premium</option>
+            <option value="sixtydb">🇮🇳 60db.ai — Indian Languages</option>
           </select>
           <p class="hint" id="tts-provider-hint">Free, natural voices — no API key needed</p>
         </div>
@@ -706,9 +707,43 @@
             </select>
           </div>
         </div>
-      </div>
 
-      <!-- Tab: About -->
+        <!-- 60db.ai settings -->
+        <div class="settings-section" id="tts-sixtydb-settings" style="display:none;">
+          <span class="field-label">60db.ai API Key</span>
+          <div class="input-group">
+            <input type="password" id="input-sixtydb-key" placeholder="sk_live_..." autocomplete="off" />
+            <button id="btn-toggle-sixtydb-key" class="icon-btn small" title="Show/Hide">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
+              </svg>
+            </button>
+          </div>
+          <p class="hint">60db.ai — Hindi, Tamil, Bengali, Telugu & more Indian languages</p>
+          <span id="sixtydb-voice-status" class="hint" style="display:block;"></span>
+          <div class="field" style="margin-top: 8px;">
+            <span class="field-label">Voice</span>
+            <select id="select-sixtydb-voice">
+              <option value="fbb75ed2-975a-40c7-9e06-38e30524a9a1">Default Voice</option>
+            </select>
+          </div>
+          <div class="slider-field" style="margin-top: 8px;">
+            <span class="field-label">Speed</span>
+            <input type="range" id="range-sixtydb-speed" min="0.5" max="2.0" step="0.1" value="1.0" />
+            <span id="sixtydb-speed-value" class="range-value">1.0x</span>
+          </div>
+          <div class="slider-field" style="margin-top: 8px;">
+            <span class="field-label">Stability</span>
+            <input type="range" id="range-sixtydb-stability" min="0" max="100" step="5" value="50" />
+            <span id="sixtydb-stability-value" class="range-value">50</span>
+          </div>
+          <div class="slider-field" style="margin-top: 8px;">
+            <span class="field-label">Similarity</span>
+            <input type="range" id="range-sixtydb-similarity" min="0" max="100" step="5" value="50" />
+            <span id="sixtydb-similarity-value" class="range-value">50</span>
+          </div>
+        </div>
+      </div>
       <div class="settings-tab-content" id="tab-about">
         <div class="settings-section about-info">
           <div class="about-app-header">
@@ -883,6 +918,7 @@
   <script type="module" src="/js/soniox.js"></script>
   <script type="module" src="/js/elevenlabs-tts.js"></script>
   <script type="module" src="/js/google-tts.js"></script>
+  <script type="module" src="/js/sixtydb-tts.js"></script>
   <script type="module" src="/js/updater.js"></script>
   <script type="module" src="/js/audio-player.js"></script>
   <script type="module" src="/js/app.js"></script>

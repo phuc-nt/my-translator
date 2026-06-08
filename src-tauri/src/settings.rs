@@ -69,6 +69,16 @@ pub struct Settings {
     pub google_tts_voice: String,
     /// Google TTS speaking rate
     pub google_tts_speed: f64,
+    /// 60db.ai API key for TTS
+    pub sixtydb_api_key: String,
+    /// 60db.ai voice ID
+    pub sixtydb_voice_id: String,
+    /// 60db.ai speed (0.5 - 2.0)
+    pub sixtydb_speed: f64,
+    /// 60db.ai stability (0 - 100)
+    pub sixtydb_stability: i32,
+    /// 60db.ai similarity (0 - 100)
+    pub sixtydb_similarity: i32,
     /// OpenAI Realtime: when true server generates translated audio.
     /// Default false — speaker → mic feedback loop on shared devices.
     #[serde(default)]
@@ -101,6 +111,11 @@ impl Default for Settings {
             google_tts_api_key: String::new(),
             google_tts_voice: "vi-VN-Chirp3-HD-Aoede".to_string(),
             google_tts_speed: 1.0,
+            sixtydb_api_key: String::new(),
+            sixtydb_voice_id: "fbb75ed2-975a-40c7-9e06-38e30524a9a1".to_string(),
+            sixtydb_speed: 1.0,
+            sixtydb_stability: 50,
+            sixtydb_similarity: 50,
             openai_audio_output: false,
         }
     }
