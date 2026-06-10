@@ -141,7 +141,7 @@ body.mobile .mobile-fab:active {
   transform: scale(0.98);
 }
 
-body.mobile.interview-active .mobile-fab {
+body.mobile.suggestions-active .mobile-fab {
   display: inline-flex !important;
   align-items: center;
   justify-content: center;

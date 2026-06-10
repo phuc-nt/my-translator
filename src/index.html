@@ -177,9 +177,16 @@
         <div class="chat-input-wrap">
           <div id="interview-suggestions-panel" class="interview-suggestions-panel" style="display:none" aria-live="polite">
             <div class="interview-suggestions-header">
-              <span>Suggested answers</span>
+              <span id="interview-suggestions-title">Suggested answers</span>
               <span id="interview-suggestions-status" class="interview-suggestions-status" style="display:none"></span>
               <div class="interview-suggestions-actions">
+                <button type="button" id="btn-regenerate-suggestions" class="interview-suggestions-regenerate" title="Generate another suggestion" aria-label="Generate another suggestion">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <polyline points="1 20 1 14 7 14"></polyline>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                  </svg>
+                </button>
                 <button type="button" id="btn-open-suggestions" class="interview-suggestions-open" style="display:none" title="Open panel" aria-label="Open panel">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <polyline points="6 9 12 15 18 9"></polyline>
@@ -188,6 +195,7 @@
                 <button type="button" id="btn-close-suggestions" class="interview-suggestions-close" aria-label="Close panel">×</button>
               </div>
             </div>
+            <p id="interview-suggestions-empty" class="interview-suggestions-empty" hidden>Waiting for interviewer question…</p>
             <ul id="interview-suggestions-list" class="interview-suggestions-list"></ul>
           </div>
           <div id="interview-uploads" class="interview-uploads" style="display:none">

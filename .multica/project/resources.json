@@ -1,0 +1,15 @@
+{
+  "project_id": "5a00942d-8f0c-40fa-8ff1-10feb97a2fdb",
+  "project_title": "Assistant",
+  "resources": [
+    {
+      "id": "097ad6e5-64a7-4746-ac0d-9144a54b056c",
+      "resource_type": "local_directory",
+      "resource_ref": {
+        "label": "assistant",
+        "daemon_id": "019eb13f-9e86-72e8-a3b9-6ee79c818eee",
+        "local_path": "C:\\Users\\hoang\\Projects\\assistant"
+      }
+    }
+  ]
+}

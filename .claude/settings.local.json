@@ -17,7 +17,9 @@
       "mcp__claude_ai_Linear__get_project",
       "Skill(update-config)",
       "Skill(update-config:*)",
-      "Bash(cargo check:*)"
+      "Bash(cargo check:*)",
+      "Bash(rustup show:*)",
+      "Bash(rustup target:*)"
     ]
   }
 }

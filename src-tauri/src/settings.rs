@@ -82,6 +82,8 @@ pub struct Settings {
     pub pinecone_api_key: String,
     /// Interview suggestions language mode: "target" (source_language), "translation", "both"
     pub suggestion_type: String,
+    /// App mode: "Interview" | "Meeting" | "" (none)
+    pub app_mode: String,
 }
 
 impl Default for Settings {
@@ -116,6 +118,7 @@ impl Default for Settings {
             llm_api_key: String::new(),
             pinecone_api_key: String::new(),
             suggestion_type: "translation".to_string(),
+            app_mode: "Interview".to_string(),
         }
     }
 }

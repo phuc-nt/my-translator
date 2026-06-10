@@ -225,10 +225,10 @@ class App {
             document.getElementById('sidebar')?.classList.add('hidden');
         });
 
-        // Mobile FAB: toggle Interview bottom sheet
+        // Mobile FAB: toggle suggestions bottom sheet
         document.getElementById('btn-toggle-right-panel')?.addEventListener('click', () => {
             if (!this.isMobile) return;
-            if (this.currentTemplate !== 'Interview') return;
+            if (!this._isSuggestionsMode()) return;
             const open = !document.body.classList.contains('sheet-open');
             this._setMobileSheetOpen(open);
         });
@@ -314,9 +314,19 @@ class App {
             // Keep docked if it was docked.
         });
 
-        // Open Interview suggestions panel (after closing)
+        // Regenerate suggestions
+        document.getElementById('btn-regenerate-suggestions')?.addEventListener('click', () => {
+            if (!this._isSuggestionsMode()) return;
+            this._interviewSuggestionsClosed = false;
+            this._setRightPanelCollapsed(false);
+            const { transcriptContext, userDraft } = this._lastInterviewSuggestArgs || {};
+            this._markInterviewSuggestStart('manual');
+            this._scheduleSuggestions({ transcriptContext, userDraft });
+        });
+
+        // Open suggestions panel (after closing)
         document.getElementById('btn-open-suggestions')?.addEventListener('click', () => {
-            if (this.currentTemplate !== 'Interview') return;
+            if (!this._isSuggestionsMode()) return;
             this._interviewSuggestionsClosed = false;
             if (this.isMobile) {
                 this._setMobileSheetOpen(true);
@@ -876,7 +886,7 @@ class App {
         const st = document.getElementById('select-suggestion-type')?.value || 'translation';
         settings.suggestion_type = ['target', 'translation', 'both'].includes(st) ? st : 'translation';
         const am = document.getElementById('select-app-mode')?.value || '';
-        settings.app_mode = ['Interview', 'Meeting'].includes(am) ? am : null;
+        settings.app_mode = ['Interview', 'Meeting'].includes(am) ? am : '';
 
         try {
             await settingsManager.save(settings);
@@ -2154,14 +2164,89 @@ class App {
         textarea.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
+    _isSuggestionsMode() {
+        return this.currentTemplate === 'Interview' || this.currentTemplate === 'Meeting';
+    }
+
+    _suggestionsPanelTitle() {
+        return this.currentTemplate === 'Meeting' ? 'Suggestions' : 'Suggested answers';
+    }
+
+    _suggestionsEmptyText() {
+        return this.currentTemplate === 'Meeting'
+            ? 'Waiting for conversation context…'
+            : 'Waiting for interviewer question…';
+    }
+
+    _updateSuggestionsPanelChrome() {
+        const title = document.getElementById('interview-suggestions-title');
+        if (title) title.textContent = this._suggestionsPanelTitle();
+        this._updateSuggestionsEmptyState();
+    }
+
+    _updateSuggestionsEmptyState() {
+        const empty = document.getElementById('interview-suggestions-empty');
+        if (!empty) return;
+        const show = this._isSuggestionsMode()
+            && !this._interviewSuggestionsItems.length
+            && !this._interviewSuggestionsClosed;
+        empty.textContent = this._suggestionsEmptyText();
+        empty.hidden = !show;
+    }
+
+    _clearSuggestionsPanel() {
+        this._interviewSuggestGen += 1;
+        clearTimeout(this._interviewSuggestTimer);
+        this._cancelInterviewSuggestionsStreaming();
+        this._interviewSuggestionsItems = [];
+        this._lastInterviewSuggestArgs = { transcriptContext: null, userDraft: null };
+        this._brainstormPending = false;
+        this._interviewSuggestionsClosed = false;
+        const list = document.getElementById('interview-suggestions-list');
+        if (list) list.innerHTML = '';
+        this._setInterviewSuggestionsStatus('');
+        document.getElementById('transcript-content')?.querySelectorAll('.seg-brainstorm-btn').forEach((el) => el.remove());
+        this._updateSuggestionsEmptyState();
+    }
+
+    _suggestionKindLabel(kind) {
+        const labels = {
+            talking_point: 'Talking Point',
+            clarifying_question: 'Clarifying Question',
+            action_item: 'Action Item',
+        };
+        return labels[kind] || '';
+    }
+
+    _prependSuggestionKindLabel(li, item) {
+        if (this.currentTemplate !== 'Meeting') return;
+        const label = this._suggestionKindLabel(item.suggestion_kind);
+        if (!label) return;
+        const el = document.createElement('span');
+        el.className = 'suggestion-chip-kind';
+        el.textContent = label;
+        li.insertBefore(el, li.firstChild);
+    }
+
     _setTemplateMode(mode) {
+        const prevMode = this.currentTemplate;
         this.currentTemplate = mode || null;
-        if (this.currentTemplate === 'Interview') {
+        if (
+            prevMode !== this.currentTemplate
+            && prevMode
+            && this.currentTemplate
+            && (prevMode === 'Interview' || prevMode === 'Meeting')
+            && (this.currentTemplate === 'Interview' || this.currentTemplate === 'Meeting')
+        ) {
+            this._clearSuggestionsPanel();
+        }
+        if (this._isSuggestionsMode()) {
             this._interviewSuggestionsClosed = false;
         }
 
-        // Mobile: mark interview-active for FAB visibility
+        // Mobile: mark body classes for mode-specific UI
         document.body.classList.toggle('interview-active', this.currentTemplate === 'Interview');
+        document.body.classList.toggle('suggestions-active', this._isSuggestionsMode());
 
         // Update dropdown label
         const templateLabel = document.querySelector('#btn-template .template-trigger-label');
@@ -2170,26 +2255,25 @@ class App {
         const uploads = document.getElementById('interview-uploads');
         if (uploads) uploads.style.display = this.currentTemplate === 'Interview' ? '' : 'none';
         const sugPanel = document.getElementById('interview-suggestions-panel');
-        if (sugPanel && this.currentTemplate !== 'Interview') {
-            sugPanel.style.display = 'none';
+        if (!this._isSuggestionsMode()) {
+            if (sugPanel) sugPanel.style.display = 'none';
             this._undockInterviewSuggestions();
             this._rightPanelCollapsed = false;
-        }
-        if (this.currentTemplate !== 'Interview') {
             this._interviewSuggestGen += 1;
             if (this.isMobile) this._setMobileSheetOpen(false);
         } else {
-            // Always show the panel in Interview mode (even before suggestions exist).
             if (sugPanel) sugPanel.style.display = '';
+            this._updateSuggestionsPanelChrome();
             if (this.isMobile) {
                 this._undockInterviewSuggestions();
                 this._setMobileSheetOpen(false);
             } else {
                 this._dockInterviewSuggestionsRight();
-                // Default to collapsed rail until user opens (and/or suggestions arrive).
                 this._setRightPanelCollapsed(true);
             }
-            this._scheduleInterviewIngest();
+            if (this.currentTemplate === 'Interview') {
+                this._scheduleInterviewIngest();
+            }
         }
         this._updateChatInputState();
     }
@@ -2452,7 +2536,7 @@ class App {
                 this._interviewSuggestionsClosed = false;
                 this._setRightPanelCollapsed(false);
                 this._markInterviewSuggestStart('draft');
-                this._scheduleInterviewSuggestions({ transcriptContext: null, userDraft: text });
+                this._scheduleSuggestions({ transcriptContext: null, userDraft: text });
             })();
         }
     }
@@ -2627,21 +2711,23 @@ class App {
     }
 
     _onInterviewSpeakerFinal(text) {
-        if (this.currentTemplate !== 'Interview') return;
+        if (!this._isSuggestionsMode()) return;
         const t = String(text || '').trim();
         if (!t) return;
         this._lastInterviewSuggestArgs = { transcriptContext: t, userDraft: null };
         this._brainstormPending = true;
         this._injectBrainstormButton();
-        (async () => {
-            try {
-                await invoke('save_interview_message', {
-                    req: { userId: this._getInterviewUserId(), role: 'speaker', content: t },
-                });
-            } catch (e) {
-                console.warn('[Interview] save speaker line', e);
-            }
-        })();
+        if (this.currentTemplate === 'Interview') {
+            (async () => {
+                try {
+                    await invoke('save_interview_message', {
+                        req: { userId: this._getInterviewUserId(), role: 'speaker', content: t },
+                    });
+                } catch (e) {
+                    console.warn('[Interview] save speaker line', e);
+                }
+            })();
+        }
     }
 
     _injectBrainstormButton() {
@@ -2669,13 +2755,13 @@ class App {
             this._setRightPanelCollapsed(false);
             const { transcriptContext, userDraft } = this._lastInterviewSuggestArgs || {};
             this._markInterviewSuggestStart(transcriptContext ? 'speaker' : 'draft');
-            this._scheduleInterviewSuggestions({ transcriptContext, userDraft });
+            this._scheduleSuggestions({ transcriptContext, userDraft });
         });
         lastBlock.appendChild(btn);
     }
 
-    _scheduleInterviewSuggestions({ transcriptContext, userDraft }) {
-        if (this.currentTemplate !== 'Interview') return;
+    _scheduleSuggestions({ transcriptContext, userDraft }) {
+        if (!this._isSuggestionsMode()) return;
         // Manual mode: _markInterviewSuggestStart is called by the trigger button
         this._lastInterviewSuggestArgs = {
             transcriptContext: transcriptContext || null,
@@ -2758,9 +2844,10 @@ class App {
         if (this._interviewSuggestionsClosed) {
             panel.style.display = '';
             this._setRightPanelCollapsed(true);
+            this._updateSuggestionsEmptyState();
             return;
         }
-        if (this.currentTemplate !== 'Interview') {
+        if (!this._isSuggestionsMode()) {
             panel.style.display = 'none';
             list.innerHTML = '';
             this._undockInterviewSuggestions();
@@ -2771,8 +2858,11 @@ class App {
             list.innerHTML = '';
             this._dockInterviewSuggestionsRight();
             this._setRightPanelCollapsed(true);
+            this._updateSuggestionsEmptyState();
             return;
         }
+
+        this._updateSuggestionsEmptyState();
 
         this._setRightPanelCollapsed(false);
         panel.style.display = '';
@@ -2806,6 +2896,7 @@ class App {
                     const li = document.createElement('li');
                     li.className = 'suggestion-chip-row';
                     li.dataset.face = 'target';
+                    this._prependSuggestionKindLabel(li, item);
                     const btn = document.createElement('button');
                     btn.type = 'button';
                     btn.className = 'suggestion-chip';
@@ -2863,6 +2954,7 @@ class App {
                 if (!text.trim()) return;
                 const li = document.createElement('li');
                 li.className = 'suggestion-chip-row';
+                this._prependSuggestionKindLabel(li, item);
                 const btn = document.createElement('button');
                 btn.type = 'button';
                 btn.className = 'suggestion-chip';
@@ -2909,6 +3001,7 @@ class App {
                     userId: this._getInterviewUserId(),
                     transcriptContext: transcriptContext || null,
                     userDraft: userDraft || null,
+                    appMode: settingsManager.get().app_mode || this.currentTemplate || null,
                 },
             });
             if (gen !== this._interviewSuggestGen) return;
@@ -2916,7 +3009,7 @@ class App {
             this._markInterviewSuggestDone(true);
         } catch (e) {
             console.warn('[Interview] suggest', e);
-            if (gen === this._interviewSuggestGen && panel) panel.style.display = 'none';
+            if (gen === this._interviewSuggestGen) this._updateSuggestionsEmptyState();
             this._markInterviewSuggestDone(false);
         }
     }
@@ -2926,15 +3019,18 @@ class App {
         if (!Array.isArray(raw)) return [];
         return raw.map((x, i) => {
             if (typeof x === 'string') {
-                if (st === 'translation') return { id: i, target: '', translation: x };
-                if (st === 'target') return { id: i, target: x, translation: '' };
-                return { id: i, target: x, translation: x };
+                if (st === 'translation') return { id: i, target: '', translation: x, suggestion_kind: 'answer' };
+                if (st === 'target') return { id: i, target: x, translation: '', suggestion_kind: 'answer' };
+                return { id: i, target: x, translation: x, suggestion_kind: 'answer' };
             }
             const id = typeof x.id === 'number' ? x.id : i;
             return {
                 id,
                 target: x.target != null ? String(x.target) : '',
                 translation: x.translation != null ? String(x.translation) : '',
+                suggestion_kind: x.suggestionKind != null
+                    ? String(x.suggestionKind)
+                    : (x.suggestion_kind != null ? String(x.suggestion_kind) : 'answer'),
             };
         });
     }
@@ -2958,22 +3054,24 @@ class App {
         if (this._interviewSuggestionsClosed) {
             panel.style.display = '';
             this._setRightPanelCollapsed(true);
+            this._updateSuggestionsEmptyState();
             return;
         }
-        if (this.currentTemplate !== 'Interview') {
+        if (!this._isSuggestionsMode()) {
             panel.style.display = 'none';
             list.innerHTML = '';
             this._undockInterviewSuggestions();
             return;
         }
         if (!normalized.length) {
-            // Keep the panel rail visible in Interview mode even when there are no suggestions yet.
             panel.style.display = '';
             list.innerHTML = '';
             this._dockInterviewSuggestionsRight();
             this._setRightPanelCollapsed(true);
+            this._updateSuggestionsEmptyState();
             return;
         }
+        this._updateSuggestionsEmptyState();
         this._setRightPanelCollapsed(false);
         panel.style.display = '';
         list.innerHTML = '';
@@ -2984,6 +3082,7 @@ class App {
                 const li = document.createElement('li');
                 li.className = 'suggestion-chip-row';
                 li.dataset.face = 'target';
+                this._prependSuggestionKindLabel(li, item);
                 const btn = document.createElement('button');
                 btn.type = 'button';
                 btn.className = 'suggestion-chip';
@@ -3031,6 +3130,7 @@ class App {
             if (!text.trim()) return;
             const li = document.createElement('li');
             li.className = 'suggestion-chip-row';
+            this._prependSuggestionKindLabel(li, item);
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'suggestion-chip';
@@ -3055,7 +3155,7 @@ class App {
             list.appendChild(li);
         });
 
-        // For Interview template, show suggestions in a split right panel (subtitle stays visible on the left).
+        // For Interview/Meeting template, show suggestions in a split right panel (subtitle stays visible on the left).
         this._dockInterviewSuggestionsRight();
     }
 }

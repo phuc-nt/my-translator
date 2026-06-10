@@ -824,6 +824,30 @@ body {
   transform: scale(0.98);
 }
 
+.interview-suggestions-regenerate {
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.interview-suggestions-regenerate:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.interview-suggestions-regenerate:active {
+  transform: scale(0.95) rotate(180deg);
+  transition: transform 0.3s ease;
+}
+
 .interview-suggestions-close {
   width: 18px;
   height: 18px;
@@ -846,6 +870,14 @@ body {
   transform: scale(0.95);
 }
 
+.interview-suggestions-empty {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: calc(var(--app-font-size, 14px) * 0.85);
+  color: rgba(255, 255, 255, 0.38);
+  font-style: italic;
+}
+
 .interview-suggestions-list {
   list-style: none;
   margin: 0;
@@ -853,6 +885,16 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.interview-suggestions-list .suggestion-chip-kind {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(96, 165, 250, 0.85);
 }
 
 .interview-suggestions-list .suggestion-chip-row {

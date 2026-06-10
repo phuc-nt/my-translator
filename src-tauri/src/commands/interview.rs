@@ -57,6 +57,8 @@ pub struct SuggestInterviewAnswersRequest {
     pub user_draft: Option<String>,
     #[serde(default)]
     pub debug: Option<bool>,
+    #[serde(default)]
+    pub app_mode: Option<String>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -65,6 +67,7 @@ pub struct InterviewSuggestionItem {
     pub id: u32,
     pub target: String,
     pub translation: String,
+    pub suggestion_kind: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -263,6 +266,7 @@ fn parse_suggestions_from_llm(raw: &str, suggestion_type: &str) -> Vec<Interview
                     id: i as u32,
                     target: s.clone(),
                     translation: s,
+                    suggestion_kind: "answer".to_string(),
                 })
                 .collect(),
             "target" => line_fallback_suggestion_strings(raw)
@@ -272,6 +276,7 @@ fn parse_suggestions_from_llm(raw: &str, suggestion_type: &str) -> Vec<Interview
                     id: i as u32,
                     target: s,
                     translation: String::new(),
+                    suggestion_kind: "answer".to_string(),
                 })
                 .collect(),
             _ => line_fallback_suggestion_strings(raw)
@@ -281,6 +286,7 @@ fn parse_suggestions_from_llm(raw: &str, suggestion_type: &str) -> Vec<Interview
                     id: i as u32,
                     target: String::new(),
                     translation: s,
+                    suggestion_kind: "answer".to_string(),
                 })
                 .collect(),
         };
@@ -295,6 +301,7 @@ fn parse_suggestions_from_llm(raw: &str, suggestion_type: &str) -> Vec<Interview
                         id: i as u32,
                         target: r.target,
                         translation: r.translation,
+                        suggestion_kind: "answer".to_string(),
                     })
                     .collect()
             })
@@ -307,6 +314,7 @@ fn parse_suggestions_from_llm(raw: &str, suggestion_type: &str) -> Vec<Interview
                         id: i as u32,
                         target: s.clone(),
                         translation: s,
+                        suggestion_kind: "answer".to_string(),
                     })
                     .collect()
             }),
@@ -318,6 +326,7 @@ fn parse_suggestions_from_llm(raw: &str, suggestion_type: &str) -> Vec<Interview
                 id: i as u32,
                 target: s,
                 translation: String::new(),
+                suggestion_kind: "answer".to_string(),
             })
             .collect(),
         _ => serde_json::from_slice::<Vec<String>>(slice.as_bytes())
@@ -328,8 +337,133 @@ fn parse_suggestions_from_llm(raw: &str, suggestion_type: &str) -> Vec<Interview
                 id: i as u32,
                 target: String::new(),
                 translation: s,
+                suggestion_kind: "answer".to_string(),
             })
             .collect(),
+    }
+}
+
+fn count_speaker_lines(transcript: &str) -> usize {
+    transcript.lines().filter(|l| !l.trim().is_empty()).count()
+}
+
+#[derive(Deserialize)]
+struct MeetingSuggestionBothRow {
+    target: String,
+    translation: String,
+    #[serde(default)]
+    suggestion_kind: String,
+}
+
+#[derive(Deserialize)]
+struct MeetingSuggestionSingleRow {
+    text: String,
+    #[serde(default)]
+    suggestion_kind: String,
+}
+
+fn parse_meeting_suggestions_from_llm(raw: &str, suggestion_type: &str) -> Vec<InterviewSuggestionItem> {
+    let st = normalized_suggestion_type(suggestion_type);
+    let default_kind = "talking_point";
+
+    let Some(slice) = extract_json_array_slice(raw) else {
+        return line_fallback_suggestion_strings(raw)
+            .into_iter()
+            .enumerate()
+            .map(|(i, s)| match st {
+                "both" => InterviewSuggestionItem {
+                    id: i as u32,
+                    target: s.clone(),
+                    translation: s,
+                    suggestion_kind: default_kind.to_string(),
+                },
+                "target" => InterviewSuggestionItem {
+                    id: i as u32,
+                    target: s,
+                    translation: String::new(),
+                    suggestion_kind: default_kind.to_string(),
+                },
+                _ => InterviewSuggestionItem {
+                    id: i as u32,
+                    target: String::new(),
+                    translation: s,
+                    suggestion_kind: default_kind.to_string(),
+                },
+            })
+            .collect();
+    };
+
+    match st {
+        "both" => serde_json::from_slice::<Vec<MeetingSuggestionBothRow>>(slice.as_bytes())
+            .map(|rows| {
+                rows.into_iter()
+                    .enumerate()
+                    .map(|(i, r)| InterviewSuggestionItem {
+                        id: i as u32,
+                        target: r.target,
+                        translation: r.translation,
+                        suggestion_kind: if r.suggestion_kind.is_empty() {
+                            default_kind.to_string()
+                        } else {
+                            r.suggestion_kind
+                        },
+                    })
+                    .collect()
+            })
+            .unwrap_or_else(|_| {
+                line_fallback_suggestion_strings(raw)
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, s)| InterviewSuggestionItem {
+                        id: i as u32,
+                        target: s.clone(),
+                        translation: s,
+                        suggestion_kind: default_kind.to_string(),
+                    })
+                    .collect()
+            }),
+        _ => serde_json::from_slice::<Vec<MeetingSuggestionSingleRow>>(slice.as_bytes())
+            .map(|rows| {
+                rows.into_iter()
+                    .enumerate()
+                    .map(|(i, r)| {
+                        let (target, translation) = if st == "target" {
+                            (r.text, String::new())
+                        } else {
+                            (String::new(), r.text)
+                        };
+                        InterviewSuggestionItem {
+                            id: i as u32,
+                            target,
+                            translation,
+                            suggestion_kind: if r.suggestion_kind.is_empty() {
+                                default_kind.to_string()
+                            } else {
+                                r.suggestion_kind
+                            },
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_else(|_| {
+                line_fallback_suggestion_strings(raw)
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, s)| {
+                        let (target, translation) = if st == "target" {
+                            (s, String::new())
+                        } else {
+                            (String::new(), s)
+                        };
+                        InterviewSuggestionItem {
+                            id: i as u32,
+                            target,
+                            translation,
+                            suggestion_kind: default_kind.to_string(),
+                        }
+                    })
+                    .collect()
+            }),
     }
 }
 
@@ -537,6 +671,7 @@ pub fn suggest_interview_answers(
         suggestion_type,
         llm_key,
         pine_key,
+        app_mode_from_settings,
     ) = {
         let g = settings.0.lock().map_err(|e| e.to_string())?;
         (
@@ -549,6 +684,7 @@ pub fn suggest_interview_answers(
             g.suggestion_type.clone(),
             g.llm_api_key.clone(),
             g.pinecone_api_key.clone(),
+            g.app_mode.clone(),
         )
     };
     if llm_url.trim().is_empty() {
@@ -560,6 +696,90 @@ pub fn suggest_interview_answers(
     if llm_key.trim().is_empty() {
         return Err("LLM API key not set — add it in Settings → AI.".to_string());
     }
+
+    // Request app_mode takes priority over persisted settings
+    let app_mode = req.app_mode.as_deref()
+        .filter(|s| !s.is_empty())
+        .unwrap_or(&app_mode_from_settings);
+
+    if app_mode == "Meeting" {
+        // ── Meeting path ──────────────────────────────────────────────────────
+        // FR-7 empty-context guard: < 2 non-empty lines → return placeholder, no LLM call
+        let transcript = req.transcript_context.as_deref().unwrap_or("").trim().to_string();
+        if count_speaker_lines(&transcript) < 2 {
+            return Ok(SuggestInterviewAnswersResponse {
+                suggestions: vec![InterviewSuggestionItem {
+                    id: 0,
+                    target: "Waiting for more conversation context\u{2026}".to_string(),
+                    translation: "Waiting for more conversation context\u{2026}".to_string(),
+                    suggestion_kind: "talking_point".to_string(),
+                }],
+                debug: None,
+            });
+        }
+
+        let st = normalized_suggestion_type(&suggestion_type);
+        let return_format = match st {
+            "both" => format!(
+                "Return ONLY a JSON array. Each element must be an object with exactly three string keys: \
+\"target\", \"translation\", and \"suggestion_kind\".\n\
+\"target\" is the suggestion in the source language (code: {src}).\n\
+\"translation\" is the same suggestion in the translation language (code: {tgt}).\n\
+\"suggestion_kind\" must be one of: \"talking_point\", \"clarifying_question\", \"action_item\".\n\
+Example: [{{\"target\":\"Let's align on the deadline.\",\"translation\":\"Hãy thống nhất về thời hạn.\",\"suggestion_kind\":\"action_item\"}}]\n\
+No markdown fences, no extra text — ONLY the JSON array.",
+                src = source_language,
+                tgt = target_language,
+            ),
+            "target" => format!(
+                "Return ONLY a JSON array. Each element must be an object with exactly two string keys: \
+\"text\" and \"suggestion_kind\".\n\
+\"text\" is the suggestion entirely in the source language (code: {src}).\n\
+\"suggestion_kind\" must be one of: \"talking_point\", \"clarifying_question\", \"action_item\".\n\
+Example: [{{\"text\":\"Can you clarify the scope?\",\"suggestion_kind\":\"clarifying_question\"}}]\n\
+No markdown fences, no extra text — ONLY the JSON array.",
+                src = source_language,
+            ),
+            _ => format!(
+                "Return ONLY a JSON array. Each element must be an object with exactly two string keys: \
+\"text\" and \"suggestion_kind\".\n\
+\"text\" is the suggestion entirely in the translation language (code: {tgt}).\n\
+\"suggestion_kind\" must be one of: \"talking_point\", \"clarifying_question\", \"action_item\".\n\
+Example: [{{\"text\":\"Bạn có thể làm rõ phạm vi không?\",\"suggestion_kind\":\"clarifying_question\"}}]\n\
+No markdown fences, no extra text — ONLY the JSON array.",
+                tgt = target_language,
+            ),
+        };
+
+        let prompt = format!(
+            "You are an attentive meeting participant. The following is a recent excerpt from a live \
+conversation. Based only on what was just said, provide 1\u{2013}2 concise, professional suggestions the \
+participant could use. Each suggestion should be one of: a talking point to contribute, a clarifying \
+question to ask, or an action item to propose. Keep each suggestion under 25 words.\n\n\
+{return_format}\n\n\
+Recent conversation excerpt:\n{transcript}\n",
+            return_format = return_format,
+            transcript = transcript,
+        );
+
+        let client = http_client()?;
+        let raw = llm::complete_suggestions(&client, &llm_url, &llm_key, &llm_model, &prompt)?;
+        let suggestions = parse_meeting_suggestions_from_llm(&raw, st);
+
+        let debug = if req.debug == Some(true) {
+            Some(format!(
+                "mode=Meeting, llm_model={}, prompt_chars={}",
+                llm_model,
+                prompt.len()
+            ))
+        } else {
+            None
+        };
+
+        return Ok(SuggestInterviewAnswersResponse { suggestions, debug });
+    }
+
+    // ── Interview path (unchanged) ────────────────────────────────────────────
     if pine_key.trim().is_empty() {
         return Err("Pinecone API key not set — add it in Settings → AI.".to_string());
     }
