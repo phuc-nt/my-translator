@@ -78,12 +78,19 @@
           <span class="mode-seg mode-read">📖 Read</span>
         </button>
 
-        <button id="btn-start" class="action-btn" title="Start/Stop (Space)">
+        <button id="btn-start" class="action-btn" title="Start/Stop (⌘↩)">
           <svg id="icon-play" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
             <polygon points="5 3 19 12 5 21 5 3" />
           </svg>
           <svg id="icon-stop" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="display:none">
             <rect x="4" y="4" width="16" height="16" rx="2" />
+          </svg>
+        </button>
+
+        <button id="btn-pause" class="action-btn" title="Pause (keep session)" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <rect x="6" y="4" width="4" height="16" rx="1" />
+            <rect x="14" y="4" width="4" height="16" rx="1" />
           </svg>
         </button>
 
@@ -919,7 +926,6 @@
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
           </svg>
         </button>
-        <button id="btn-new-session" class="btn-secondary small" title="Start a fresh session (current is saved)">+ New session</button>
       </div>
     </div>
 

@@ -48,6 +48,7 @@ class App {
         this.ttsEnabled = false;  // TTS runtime toggle
         this.isPinned = true;     // Always-on-top state
         this.isCompact = false;   // Compact mode (hide control bar)
+        this._closing = false;    // Guard so the exit flush runs exactly once
     }
 
     async init() {
@@ -58,8 +59,8 @@ class App {
         const transcriptContainer = document.getElementById('transcript-content');
         this.transcriptUI = new TranscriptUI(transcriptContainer);
 
-        // Init session store — single session per app launch (auto-resumes
-        // across Start/Stop cycles; persists on every Stop).
+        // Init session store — one session file lives across many Start/Pause
+        // cycles; it autosaves while recording and finalizes on Stop or app close.
         const initSettings = settingsManager.get();
         sessionStore.init({
             engine: initSettings.translation_mode || 'soniox',
@@ -75,6 +76,9 @@ class App {
 
         // Bind event listeners
         this._bindEvents();
+
+        // Flush the session on every close route (window ✕, Cmd+Q, Dock quit).
+        await this._bindCloseHooks();
 
         // Bind keyboard shortcuts
         this._bindKeyboardShortcuts();
@@ -182,25 +186,6 @@ class App {
             }
         });
 
-        // New session button — flush current and start fresh
-        document.getElementById('btn-new-session')?.addEventListener('click', async () => {
-            if (this.isRunning) {
-                this._showToast('Stop the current session first', 'error');
-                return;
-            }
-            try { await sessionStore.endSession(); } catch {}
-            const settings = settingsManager.get();
-            sessionStore.init({
-                engine: settings.translation_mode || 'soniox',
-                sourceLang: settings.source_language || 'auto',
-                targetLang: settings.target_language || 'vi',
-            });
-            this.transcriptUI.clearSession();
-            this.transcriptUI.clear();
-            this._showToast('New session started', 'success');
-            await this._showSessions();
-        });
-
         // Session search box (debounced)
         const searchInput = document.getElementById('input-session-search');
         if (searchInput) {
@@ -236,12 +221,10 @@ class App {
         document.getElementById('btn-session-export-srt')?.addEventListener('click', () => this._exportCurrentSession('srt'));
         document.getElementById('btn-session-export-txt')?.addEventListener('click', () => this._exportCurrentSession('txt'));
 
-        // Close button (overlay)
+        // Close button (overlay) — flows through the onCloseRequested hook,
+        // which flushes the session before the app exits.
         document.getElementById('btn-close').addEventListener('click', async () => {
             await this._saveWindowPosition();
-            await this.stop();
-            // Mark session ended so resume-on-restart only fires for crashes
-            try { await sessionStore.endSession(); } catch {}
             await this.appWindow.close();
         });
 
@@ -285,7 +268,7 @@ class App {
             if (this.isStarting) return; // Prevent re-entry
             try {
                 if (this.isRunning) {
-                    await this.stop();
+                    await this.stopSession();
                 } else {
                     this.isStarting = true;
                     await this.start();
@@ -300,6 +283,19 @@ class App {
                 this.transcriptUI.showPlaceholder();
             } finally {
                 this.isStarting = false;
+            }
+        });
+
+        // Pause button — stop capture + persist, but keep the same session file.
+        // Only reachable while running (disabled otherwise); next Start appends a
+        // new chunk to the same file rather than starting a fresh one.
+        document.getElementById('btn-pause')?.addEventListener('click', async () => {
+            if (this.isStarting || !this.isRunning) return;
+            try {
+                await this.pause();
+            } catch (err) {
+                console.error('[App] Pause error:', err);
+                this._showToast(`Error: ${err}`, 'error');
             }
         });
 
@@ -401,7 +397,7 @@ class App {
         document.querySelectorAll('#engine-pill .engine-pill-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 if (this.isRunning || this.isStarting) {
-                    this._showToast('Stop the session before switching engine', 'error');
+                    this._showToast('Pause the session before switching engine', 'error');
                     return;
                 }
                 this._selectEngineClass(btn.dataset.engineClass);
@@ -630,7 +626,7 @@ class App {
                 (async () => {
                     try {
                         if (this.isRunning) {
-                            await this.stop();
+                            await this.stopSession();
                         } else {
                             this.isStarting = true;
                             await this.start();
@@ -1508,7 +1504,7 @@ class App {
     async _enterReadMode() {
         // Stop any running Live session AND drain the shared provider's queue so an in-flight
         // Live synth cannot fire onAudioChunk into the Live context after the switch.
-        if (this.isRunning) await this.stop();
+        if (this.isRunning) await this.pause();
         try { this._getActiveTTS().disconnect(); } catch { /* provider may be idle */ }
 
         this._readMode = 'read';
@@ -1516,6 +1512,7 @@ class App {
         // Hide live controls, show read panel.
         this._setSel('.source-controls', 'none');
         this._setEl('btn-start', 'none');
+        this._setEl('btn-pause', 'none');
         this._setEl('engine-pill', 'none');
         this._setEl('btn-tts', 'none');
         this._setEl('transcript-content', 'none');
@@ -1530,6 +1527,7 @@ class App {
         document.getElementById('mode-toggle')?.classList.remove('read-active');
         this._setSel('.source-controls', '');
         this._setEl('btn-start', '');
+        this._setEl('btn-pause', '');
         this._setEl('engine-pill', '');
         this._setEl('btn-tts', '');
         this._setEl('read-panel', 'none');
@@ -1710,7 +1708,7 @@ class App {
         settingsManager.save({ audio_source: source });
 
         if (wasRunning) {
-            this.stop().then(() => {
+            this.pause().then(() => {
                 this.currentSource = source;
                 this._updateSourceButtons();
                 this._showToast(`Switched to ${label}`, 'success');
@@ -2210,7 +2208,7 @@ class App {
             }, this.openAiOutputQueue);
         } catch (err) {
             this._showToast(`OpenAI connect failed: ${err}`, 'error');
-            await this.stop();
+            await this.pause();
             return;
         }
 
@@ -2234,7 +2232,7 @@ class App {
         } catch (err) {
             console.error('Failed to start audio capture:', err);
             this._showToast(`Audio error: ${err}`, 'error');
-            await this.stop();
+            await this.pause();
         }
     }
 
@@ -2291,7 +2289,7 @@ class App {
             });
         } catch (err) {
             this._showToast(`Qwen connect failed: ${err}`, 'error');
-            await this.stop();
+            await this.pause();
             return;
         }
 
@@ -2315,7 +2313,7 @@ class App {
         } catch (err) {
             console.error('Failed to start audio capture:', err);
             this._showToast(`Audio error: ${err}`, 'error');
-            await this.stop();
+            await this.pause();
         }
     }
 
@@ -2360,7 +2358,7 @@ class App {
         } catch (err) {
             console.error('Failed to start audio capture:', err);
             this._showToast(`Audio error: ${err}`, 'error');
-            await this.stop();
+            await this.pause();
         }
     }
 
@@ -2439,7 +2437,7 @@ class App {
         } catch (err) {
             console.error('Failed to start pipeline:', err);
             this._showToast(`Pipeline error: ${err}`, 'error');
-            await this.stop();
+            await this.pause();
             return;
         }
 
@@ -2628,7 +2626,10 @@ class App {
         });
     }
 
-    async stop() {
+    // Pause: stop capture and persist the current chunk, but keep the session
+    // file open. The next Start appends a new chunk to the same file. Finalizing
+    // into a new file is stopSession()'s job.
+    async pause() {
         this.isRunning = false;
         this._updateStartButton();
         this._setEnginePillLocked(false);
@@ -2688,15 +2689,85 @@ class App {
         // Transcript stays on screen — clearSession is no longer called here
         // so user can review & continue in next chunk.
         sessionStore.endChunk();
-        const hadContent = !sessionStore.isEmpty();
-        await sessionStore.persist();
-        if (hadContent) {
+        const result = await sessionStore.persist();
+        if (result === 'saved') {
             const n = sessionStore.totalSegmentCount();
             this._showToast(`Saved ${n} segment${n === 1 ? '' : 's'}`, 'success');
+        } else if (result === 'failed') {
+            this._showToast('Save failed — session kept in memory', 'error');
+        }
+        // 'skipped' → data already on disk or nothing to save; no toast.
+
+        // sessionStartTime stays — pausing keeps the same session file, which
+        // lives across many Start/Pause cycles. stopSession() resets it.
+    }
+
+    // Stop: pause (if running), finalize the current session file, then start a
+    // fresh session so the next Start writes a new file pair. Keeps the
+    // transcript on screen. Never wipes in-memory data on a failed save.
+    async stopSession() {
+        if (this.isRunning) await this.pause();
+
+        if (sessionStore.isEmpty()) {
+            this._showToast('Nothing to save', 'success');
+        } else {
+            const result = await sessionStore.endSession();
+            if (result === 'failed') {
+                // Keep the in-memory session intact so the user can retry Stop.
+                this._showToast('Save failed — session kept in memory', 'error');
+                return;
+            }
+            this._showToast('Session saved — next start creates a new one', 'success');
         }
 
-        // sessionStartTime stays — single session per app launch lives across
-        // many Start/Stop cycles. Reset only on "New Session" or app close.
+        // Reset session identity: fresh ID + current settings so the next Start
+        // writes a new file. Resetting sessionStartTime forces start() to
+        // re-stamp the metadata block with the current language pair.
+        this.sessionStartTime = null;
+        const settings = settingsManager.get();
+        sessionStore.init({
+            engine: settings.translation_mode || 'soniox',
+            sourceLang: settings.source_language || 'auto',
+            targetLang: settings.target_language || 'vi',
+        });
+    }
+
+    _sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    // Persist the session on the way out. endSession() first (cheap local write
+    // that finalizes the file), then best-effort engine teardown via pause().
+    // Both are idempotent, so running this more than once is harmless.
+    async _flushOnExit() {
+        try { await sessionStore.endSession(); } catch (e) { console.error('[App] exit flush (endSession) failed:', e); }
+        try { await this.pause(); } catch (e) { console.error('[App] exit flush (pause) failed:', e); }
+    }
+
+    // Two close routes, one flush:
+    //  • window ✕ / appWindow.close() → onCloseRequested (frontend)
+    //  • Cmd+Q / Dock quit → Rust RunEvent::ExitRequested emits 'app-exit-requested'
+    // Both flush (raced against a 3s deadline so a hung engine can't wedge the
+    // app) then exit_app, which force-exits the process cleanly in Rust.
+    async _bindCloseHooks() {
+        await this.appWindow.onCloseRequested(async (event) => {
+            if (this._closing) return;
+            this._closing = true;
+            event.preventDefault();
+            await Promise.race([this._flushOnExit(), this._sleep(3000)]);
+            try {
+                await invoke('exit_app');
+            } catch {
+                try { await this.appWindow.destroy(); } catch {}
+            }
+        });
+
+        await this.appWindow.listen('app-exit-requested', async () => {
+            if (this._closing) return;
+            this._closing = true;
+            await Promise.race([this._flushOnExit(), this._sleep(3000)]);
+            try { await invoke('exit_app'); } catch {}
+        });
     }
 
     _updateStartButton() {
@@ -2707,6 +2778,12 @@ class App {
         btn.classList.toggle('recording', this.isRunning);
         iconPlay.style.display = this.isRunning ? 'none' : 'block';
         iconStop.style.display = this.isRunning ? 'block' : 'none';
+
+        // Pause is only actionable while running. (Don't also gate on isStarting:
+        // start() calls this while isStarting is still true, and the click handler
+        // already guards the starting window.)
+        const btnPause = document.getElementById('btn-pause');
+        if (btnPause) btnPause.disabled = !this.isRunning;
     }
 
     // ─── Transcript Persistence ───────────────────────────────
@@ -2911,6 +2988,12 @@ class App {
                 btn.addEventListener('click', async (e) => {
                     e.stopPropagation();
                     const id = btn.dataset.id;
+                    // Block deleting the active session — the next autosave would
+                    // just resurrect the file the user deleted.
+                    if (id === sessionStore.id) {
+                        this._showToast('Cannot delete the active session — Stop it first', 'error');
+                        return;
+                    }
                     if (!confirm('Delete this session permanently?')) return;
                     try {
                         await invoke('delete_session', { id });

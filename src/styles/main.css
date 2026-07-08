@@ -461,6 +461,12 @@ body {
   transform: scale(0.92);
 }
 
+.action-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
+
 .action-btn.recording {
   background: var(--error);
   animation: recordPulse 2s infinite;

@@ -10,7 +10,12 @@ use commands::local_tts::LocalTtsState;
 use commands::openai_realtime::OpenAiState;
 use commands::qwen_realtime::QwenState;
 use settings::{Settings, SettingsState};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+
+// Set once the frontend has flushed the session (or the exit deadline elapsed),
+// so the ExitRequested handler stops preventing exit and the app can quit.
+static EXIT_ALLOWED: AtomicBool = AtomicBool::new(false);
 
 #[tauri::command]
 fn get_platform_info() -> String {
@@ -19,6 +24,14 @@ fn get_platform_info() -> String {
         std::env::consts::OS,
         std::env::consts::ARCH
     )
+}
+
+// Called by the frontend after it has flushed the session on exit. Force-exits
+// the process; the flag keeps a subsequent ExitRequested from being prevented.
+#[tauri::command]
+fn exit_app(app: tauri::AppHandle) {
+    EXIT_ALLOWED.store(true, Ordering::SeqCst);
+    app.exit(0);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -99,7 +112,29 @@ pub fn run() {
             commands::qwen_realtime::qwen_realtime_send_audio,
             commands::qwen_realtime::qwen_realtime_stop,
             get_platform_info,
+            exit_app,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // Cmd+Q and Dock → Quit fire app-level ExitRequested (not the
+            // window's onCloseRequested). Prevent the first exit, ask the
+            // frontend to flush the session, and force-exit after a deadline so
+            // a hung flush can never make the app unquittable.
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                if !EXIT_ALLOWED.load(Ordering::SeqCst) {
+                    use tauri::{Emitter, Manager};
+                    api.prevent_exit();
+                    if let Some(win) = app_handle.get_webview_window("main") {
+                        let _ = win.emit("app-exit-requested", ());
+                    }
+                    let handle = app_handle.clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_secs(3));
+                        EXIT_ALLOWED.store(true, Ordering::SeqCst);
+                        handle.exit(0);
+                    });
+                }
+            }
+        });
 }
