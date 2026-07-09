@@ -1,0 +1,30 @@
+name: Build App
+on:
+  workflow_dispatch: # Allows you to trigger the build manually with a button
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Frontend Deps
+        run: npm install
+
+      - name: Build Tauri App
+        run: npm run tauri build
+
+      - name: Upload Installer Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: My-Translator-Windows-EXE
+          path: src-tauri/target/release/bundle/msi/*.msi
+  
