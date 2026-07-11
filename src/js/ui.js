@@ -455,7 +455,13 @@ export class TranscriptUI {
         }
 
         this.contentEl.innerHTML = html;
-        this._smartScroll(this.container.parentElement || this.container);
+        // #transcript-content is the scroller since the activity-shell redesign
+        // (its parent #transcript-container is overflow:hidden). Scroll whichever
+        // actually overflows so this stays correct if the layout shifts again.
+        const parent = this.container.parentElement;
+        const scroller = (this.container.scrollHeight > this.container.clientHeight || !parent)
+            ? this.container : parent;
+        this._smartScroll(scroller);
     }
 
     _renderDual() {

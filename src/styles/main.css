@@ -331,6 +331,18 @@ body {
   padding-top: 4px;
 }
 
+/* Auto-hide/compact also collapses the Live status + action rows.
+   Hover peeks back only the ACTION row (bottom) — the status row stays
+   hidden because the drag region overlays the same top strip (z-99)
+   and the two would stack garbled/unclickable. */
+.live-status-row.chrome-hidden,
+.live-action-row.chrome-hidden {
+  display: none;
+}
+.compact-mode:hover .live-action-row.chrome-hidden {
+  display: flex;
+}
+
 /* Status Area */
 .status-area {
   display: flex;
@@ -498,26 +510,40 @@ body {
 #transcript-container {
   flex: 1;
   min-height: 0; /* Required for flex child to overflow-scroll properly */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+/* The transcript itself scrolls; status/action rows stay pinned */
+#transcript-content {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 12px 16px;
 }
 
 /* Custom scrollbar */
-#transcript-container::-webkit-scrollbar {
+#transcript-container::-webkit-scrollbar,
+#transcript-content::-webkit-scrollbar {
   width: 4px;
 }
 
-#transcript-container::-webkit-scrollbar-track {
+#transcript-container::-webkit-scrollbar-track,
+#transcript-content::-webkit-scrollbar-track {
   background: transparent;
 }
 
-#transcript-container::-webkit-scrollbar-thumb {
+#transcript-container::-webkit-scrollbar-thumb,
+#transcript-content::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.1);
   border-radius: 2px;
 }
 
-#transcript-container::-webkit-scrollbar-thumb:hover {
+#transcript-container::-webkit-scrollbar-thumb:hover,
+#transcript-content::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.2);
 }
 
@@ -960,33 +986,83 @@ body {
 }
 
 /* ─── Settings Tabs ───────────────────────────────────── */
-.settings-tabs {
+/* Settings wizard — home cards (level 1) and detail back rows (level 2) */
+.settings-card {
   display: flex;
-  gap: 0;
-  border-bottom: 1px solid var(--border-subtle);
-  margin-bottom: 16px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 14px;
+  margin-bottom: 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
 }
 
-.settings-tab {
+.settings-card:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-light);
+}
+
+.settings-card.disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.settings-card.disabled:hover {
+  background: var(--bg-input);
+  border-color: var(--border-subtle);
+}
+
+.settings-card-icon {
+  font-size: 20px;
+}
+
+.settings-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   flex: 1;
-  padding: 8px 0;
+  min-width: 0;
+}
+
+.settings-card-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.settings-card-sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.settings-card-chevron {
+  color: var(--text-muted);
+  font-size: 18px;
+}
+
+.settings-back-row {
+  display: block;
+  width: 100%;
+  padding: 4px 0 10px;
   background: none;
   border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--text-muted);
+  color: var(--accent);
   font-size: 12px;
   font-weight: 500;
+  text-align: left;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
 }
 
-.settings-tab:hover {
-  color: var(--text-primary);
-}
-
-.settings-tab.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
+.settings-back-row:hover {
+  color: var(--accent-hover);
 }
 
 .settings-tab-content {
@@ -2227,26 +2303,199 @@ input[type="range"]::-webkit-slider-thumb:hover {
 .engine-pill[data-locked="true"] { opacity: 0.55; }
 .engine-pill[data-locked="true"] .engine-pill-btn { cursor: not-allowed; }
 /* ─── Read Mode (in-overlay TTS reader) ─────────────────────────────────── */
-.mode-toggle-btn {
+/* Activity shell — top-bar switcher + per-activity panels */
+.activity-switcher {
   display: inline-flex;
   align-items: center;
   gap: 2px;
   padding: 3px;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.08);
-  border: none;
-  cursor: pointer;
 }
-.mode-toggle-btn .mode-seg {
+.activity-tab {
+  position: relative;
   padding: 3px 8px;
   border-radius: 6px;
+  border: none;
+  background: transparent;
   font-size: 11px;
   color: rgba(255, 255, 255, 0.6);
   white-space: nowrap;
+  cursor: pointer;
 }
-.mode-toggle-btn .mode-live { background: rgba(255, 255, 255, 0.18); color: #fff; }
-.mode-toggle-btn.read-active .mode-live { background: transparent; color: rgba(255, 255, 255, 0.6); }
-.mode-toggle-btn.read-active .mode-read { background: rgba(255, 255, 255, 0.18); color: #fff; }
+.activity-tab:hover { color: #fff; }
+.activity-tab.active { background: rgba(255, 255, 255, 0.18); color: #fff; }
+
+/* Red dot on the Live tab while a session is recording */
+.live-tab-badge {
+  display: none;
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ff5252;
+}
+.live-tab-badge.visible { display: block; }
+
+/* Panels: only the active one is visible. `!important` beats per-panel
+   display rules (e.g. #read-panel's flex) without duplicating them. */
+.activity-panel:not(.active) { display: none !important; }
+#read-panel.active, #library-panel.active { flex: 1; min-height: 0; }
+#library-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Shared chrome that only makes sense in Live */
+body:not(.activity-live) .floating-controls { display: none; }
+
+/* ── Live panel chrome (phase 2): status row + action row + ⋯ menu ── */
+.toolbar-spacer { flex: 1; height: 100%; }
+
+.live-status-row {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 11px;
+}
+.live-lang {
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.source-select {
+  margin-left: auto;
+  max-width: 110px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 11px;
+}
+
+.live-action-row {
+  flex-shrink: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+.primary-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 18px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.primary-action-btn:hover { background: var(--accent-hover); }
+.primary-action-btn.recording { background: #c0392b; }
+.primary-action-btn.recording:hover { background: #e74c3c; }
+
+.more-menu-wrap { position: relative; }
+.more-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  min-width: 210px;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  z-index: 50;
+}
+.more-menu-item {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-primary);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.more-menu-item:hover { background: var(--bg-hover); }
+.more-menu-sep { height: 1px; margin: 5px 4px; background: var(--border-subtle); }
+.more-menu-label {
+  padding: 2px 10px 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+}
+/* floating-controls moved inside the menu: neutralize its overlay styling */
+.more-menu .floating-controls {
+  position: static;
+  opacity: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 6px;
+}
+
+/* ── Read quick-pick row ── */
+.read-quick-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.read-quick-label { font-size: 11px; color: var(--text-secondary); }
+.read-quick-row .source-select { margin-left: 0; max-width: 220px; flex: 1; }
+.read-quick-more {
+  margin-left: auto;
+  padding: 3px 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--accent);
+  font-size: 11px;
+  cursor: pointer;
+}
+.read-quick-more:hover { color: var(--accent-hover); }
+
+/* ── Shortcut cheat-sheet ── */
+.shortcut-card { max-width: 340px; }
+.shortcut-title { margin: 0 0 10px; font-size: 14px; }
+.shortcut-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.shortcut-table td { padding: 5px 6px; color: var(--text-secondary); }
+.shortcut-table td:first-child { white-space: nowrap; width: 110px; }
+.shortcut-table kbd {
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-family: inherit;
+}
+
+/* ── Expanded window mode (⤢): comfortable reading/library layout ── */
+body.expanded #transcript-content {
+  padding: 20px 10%;
+  font-size: 1.05em;
+}
+body.expanded #read-panel.active { padding: 20px 10%; }
+body.expanded #read-input { min-height: 200px; font-size: 16px; }
+body.expanded #library-panel { padding: 8px 6%; }
 
 #read-panel {
   display: flex;

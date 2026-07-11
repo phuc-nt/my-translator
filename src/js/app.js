@@ -18,6 +18,10 @@ import { Reader } from './reader.js';
 import { updater } from './updater.js';
 import { sessionStore } from './session-store.js';
 import { QWEN_LANGS } from './qwen-langs.js';
+import {
+    initShell, setActivity, getActivity, setLiveBadge, bindMenu, initWindowModes,
+    startAutoHideWatch, stopAutoHideWatch, toggleManualCompact, isAutoHideEnabled, setAutoHideEnabled,
+} from './ui-shell.js';
 
 const { invoke, Channel } = window.__TAURI__.core;
 const { getCurrentWindow } = window.__TAURI__.window;
@@ -111,6 +115,9 @@ class App {
         // Window position restore disabled — causes issues on Retina displays
         // await this._restoreWindowPosition();
 
+        // Window modes: overlay ↔ expanded (⤢), restores last mode + sizes
+        initWindowModes(this.appWindow);
+
         // Check for updates (non-blocking)
         this._initAboutTab();
         this._checkForUpdates();
@@ -134,10 +141,15 @@ class App {
         }
 
         if (!this.isAppleSilicon) {
-            // Hide Local MLX option
+            // Keep the Local MLX option VISIBLE but disabled with the reason —
+            // hiding it made users think the feature vanished. (Local TTS is
+            // CPU-based and unaffected; only the MLX engine needs Apple Silicon.)
             const select = document.getElementById('select-translation-mode');
             const localOption = select?.querySelector('option[value="local"]');
-            if (localOption) localOption.remove();
+            if (localOption) {
+                localOption.disabled = true;
+                localOption.textContent += ' — cần Mac Apple Silicon';
+            }
 
             // Force soniox mode if user had local selected
             const settings = settingsManager.get();
@@ -156,18 +168,8 @@ class App {
             this._showView('settings');
         });
 
-        // Sessions button
-        document.getElementById('btn-sessions').addEventListener('click', () => {
-            this._showView('sessions');
-        });
-
         // Back from settings
         document.getElementById('btn-back').addEventListener('click', () => {
-            this._showView('overlay');
-        });
-
-        // Back from sessions
-        document.getElementById('btn-sessions-back').addEventListener('click', () => {
             this._showView('overlay');
         });
 
@@ -228,11 +230,7 @@ class App {
             await this.appWindow.close();
         });
 
-        // Minimize button
-        document.getElementById('btn-minimize').addEventListener('click', async () => {
-            await this._saveWindowPosition();
-            await this.appWindow.minimize();
-        });
+        // (Minimize button removed from toolbar — ⌘M / window menu still work)
 
         // Pin/Unpin button
         document.getElementById('btn-pin').addEventListener('click', () => {
@@ -300,15 +298,9 @@ class App {
         });
 
         // Source buttons
-        document.getElementById('btn-source-system').addEventListener('click', () => {
-            this._setSource('system');
-        });
-
-        document.getElementById('btn-source-mic').addEventListener('click', () => {
-            this._setSource('microphone');
-        });
-        document.getElementById('btn-source-both').addEventListener('click', () => {
-            this._setSource('both');
+        // Audio source dropdown (⌘1/2/3 still switch via _setSource)
+        document.getElementById('select-audio-source')?.addEventListener('change', (e) => {
+            this._setSource(e.target.value);
         });
 
         // Clear button — clears display only (auto-save happens on stop)
@@ -462,13 +454,11 @@ class App {
             input.type = input.type === 'password' ? 'text' : 'password';
         });
 
-        // Settings tab switching
-        document.querySelectorAll('.settings-tab').forEach(tab => {
-            tab.addEventListener('click', () => {
-                document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
-                document.querySelectorAll('.settings-tab-content').forEach(c => c.classList.remove('active'));
-                tab.classList.add('active');
-                document.getElementById(tab.dataset.tab)?.classList.add('active');
+        // Settings wizard navigation: home cards open detail screens, back rows return home
+        document.querySelectorAll('.settings-card, .settings-back-row').forEach(el => {
+            el.addEventListener('click', () => {
+                if (el.classList.contains('disabled')) return;
+                this._showSettingsScreen(el.dataset.screen);
             });
         });
 
@@ -614,8 +604,8 @@ class App {
 
     _bindKeyboardShortcuts() {
         document.addEventListener('keydown', (e) => {
-            // Ignore when typing in input fields
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            // Ignore when typing in input fields (SELECT: keep native typeahead)
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
                 return;
             }
 
@@ -646,10 +636,22 @@ class App {
             // Escape: Go back to overlay / close settings
             if (e.key === 'Escape') {
                 e.preventDefault();
+                // Shortcut sheet closes first if open
+                const sheet = document.getElementById('shortcut-sheet');
+                if (sheet && sheet.style.display !== 'none') {
+                    this._toggleShortcutSheet?.(false);
+                    return;
+                }
                 const settingsVisible = document.getElementById('settings-view').classList.contains('active');
                 if (settingsVisible) {
                     this._showView('overlay');
                 }
+            }
+
+            // "?": shortcut cheat-sheet (guarded above from input/textarea)
+            if (e.key === '?' && !e.metaKey && !e.ctrlKey) {
+                e.preventDefault();
+                this._toggleShortcutSheet?.(true);
             }
 
             // Cmd/Ctrl + ,: Open settings
@@ -708,19 +710,60 @@ class App {
     _showView(view) {
         document.getElementById('overlay-view').classList.toggle('active', view === 'overlay');
         document.getElementById('settings-view').classList.toggle('active', view === 'settings');
-        document.getElementById('sessions-view').classList.toggle('active', view === 'sessions');
 
         if (view === 'settings') {
             this._populateSettingsForm();
+            this._showSettingsScreen('settings-home'); // wizard always opens at home
         }
-        if (view === 'sessions') {
-            this._showSessions();
-        }
-        // Returning to the overlay while in Read mode: a voice/provider may have been
-        // downloaded or selected in Settings, so re-evaluate the Read capability hint
-        // (else the Đọc button stays disabled until a Live↔Read toggle).
-        if (view === 'overlay' && this._readMode === 'read') {
+        // Returning to the overlay while in Read mode: a voice/provider may have
+        // changed in Settings — refresh both the capability hint AND the voice
+        // quick-pick (else it keeps the old provider's options + settings key).
+        if (view === 'overlay' && getActivity() === 'read') {
+            this._populateReadQuickPick();
             this._showReadCapabilityHint();
+        }
+    }
+
+    /** Wizard: show one settings screen (home or a detail) inside the settings view. */
+    _showSettingsScreen(id) {
+        if (!id || !document.getElementById(id)) id = 'settings-home';
+        document.querySelectorAll('.settings-tab-content').forEach(c => c.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+        if (id === 'settings-home') this._updateSettingsCards();
+        document.querySelector('.settings-body')?.scrollTo(0, 0);
+    }
+
+    /** Wizard: refresh the home cards' status subtitles from current settings. */
+    _updateSettingsCards() {
+        const s = settingsManager.get();
+        const mode = s.translation_mode || 'soniox';
+        const engineNames = { soniox: 'Soniox', local: 'Local MLX', openai: 'OpenAI Realtime', qwen: 'Qwen LiveTranslate' };
+        const keyField = { soniox: 'soniox_api_key', openai: 'openai_api_key', qwen: 'qwen_api_key' };
+        const hasKey = mode === 'local' || !!(s[keyField[mode]] || '').trim();
+        const subT = document.getElementById('card-translation-sub');
+        if (subT) {
+            subT.textContent =
+                `${engineNames[mode] || mode} · ${s.source_language || 'auto'} → ${s.target_language || 'vi'}` +
+                (hasKey ? '' : ' · ⚠️ chưa có API key');
+        }
+
+        // TTS card: cloud-realtime engines run text-only — reflect on the card, never hide.
+        const isCloudRealtime = mode === 'openai' || mode === 'qwen';
+        const provNames = {
+            edge: 'Edge TTS', microsoft: 'Microsoft v2', 'google-free': 'Google TTS Free',
+            tiktok: 'TikTok TTS', local: 'Local (Offline)', google: 'Google Chirp HD', elevenlabs: 'ElevenLabs',
+        };
+        const cardTts = document.getElementById('card-tts');
+        const subTts = document.getElementById('card-tts-sub');
+        if (cardTts) cardTts.classList.toggle('disabled', isCloudRealtime);
+        if (subTts) {
+            if (isCloudRealtime) {
+                subTts.textContent = `Tắt — engine ${engineNames[mode]} chạy dạng chữ, không đọc tiếng`;
+            } else {
+                const prov = s.tts_provider || 'edge';
+                const voice = prov === 'local' && s.local_tts_voice ? ` · ${s.local_tts_voice}` : '';
+                subTts.textContent = `${provNames[prov] || prov}${voice}`;
+            }
         }
     }
 
@@ -956,6 +999,12 @@ class App {
         // Update overlay opacity
         const overlayView = document.getElementById('overlay-view');
         overlayView.style.opacity = settings.overlay_opacity || 0.85;
+
+        // Live status row: language pair display
+        const langEl = document.getElementById('live-lang');
+        if (langEl) {
+            langEl.textContent = `${settings.source_language || 'auto'} → ${settings.target_language || 'vi'}`;
+        }
 
         // Note: saving settings turns TTS narration off (see end of this method), so the
         // active provider is re-configured on the next TTS toggle — no mid-session re-sync
@@ -1485,8 +1534,46 @@ class App {
     }
 
     _initReadMode() {
-        const toggle = document.getElementById('mode-toggle');
-        toggle?.addEventListener('click', () => this._toggleMode());
+        // Activity shell: switcher clicks → panels; side effects handled here.
+        initShell();
+        document.addEventListener('activity-changed', (e) => this._onActivityChanged(e.detail));
+        // Overflow menu (⋯) in the Live action row
+        this._moreMenu = bindMenu('btn-more', 'more-menu');
+        // Menu items that navigate/close: shut the menu after action
+        ['btn-copy', 'btn-clear', 'btn-compact', 'btn-shortcuts'].forEach((id) => {
+            document.getElementById(id)?.addEventListener('click', () => this._moreMenu.close());
+        });
+        // Shortcut sheet (⋯ menu + `?` key; Esc/click-outside closes)
+        const sheet = document.getElementById('shortcut-sheet');
+        const toggleSheet = (show) => { if (sheet) sheet.style.display = show ? '' : 'none'; };
+        document.getElementById('btn-shortcuts')?.addEventListener('click', () => toggleSheet(true));
+        sheet?.addEventListener('click', (e) => { if (e.target === sheet) toggleSheet(false); });
+        this._toggleShortcutSheet = toggleSheet;
+
+        // Read quick-pick: save the active provider's voice key + re-check capability
+        document.getElementById('read-voice-quick')?.addEventListener('change', (e) => {
+            const key = e.target.dataset.key;
+            if (!key) return;
+            settingsManager.save({ [key]: e.target.value });
+            this._showReadCapabilityHint();
+        });
+        // "Chỉnh thêm…" deep-links to Settings → TTS detail
+        document.getElementById('btn-read-tts-settings')?.addEventListener('click', () => {
+            this._showView('settings');
+            this._showSettingsScreen('tab-tts');
+        });
+        // Auto-hide toolbar toggle (✓ prefix reflects state; persists in localStorage)
+        const autoHideBtn = document.getElementById('btn-auto-hide');
+        const renderAutoHide = () => {
+            if (autoHideBtn) {
+                autoHideBtn.textContent = `${isAutoHideEnabled() ? '✓' : '　'} Tự ẩn khi đang dịch`;
+            }
+        };
+        renderAutoHide();
+        autoHideBtn?.addEventListener('click', () => {
+            setAutoHideEnabled(!isAutoHideEnabled());
+            renderAutoHide();
+        });
         document.getElementById('btn-read-play')?.addEventListener('click', () => {
             // Play doubles as Resume when paused — do NOT rebuild the reader.
             if (this._reader && this._reader.state === 'paused') this._reader.play();
@@ -1498,42 +1585,70 @@ class App {
         document.getElementById('btn-read-stop')?.addEventListener('click', () => this._stopRead());
     }
 
-    _toggleMode() {
-        if (this._readMode === 'live') this._enterReadMode();
-        else this._exitReadMode();
+    /** Side effects when the activity switcher changes space. Panel visibility
+     *  itself is owned by ui-shell; this handles pause/drain/render concerns. */
+    _onActivityChanged({ activity, previous }) {
+        if (previous === 'read' && activity !== 'read') this._exitReadMode();
+        if (activity === 'read') this._enterReadMode();
+        if (activity === 'library') this._showSessions();
     }
 
     async _enterReadMode() {
         // Stop any running Live session AND drain the shared provider's queue so an in-flight
         // Live synth cannot fire onAudioChunk into the Live context after the switch.
+        // Panel visibility is owned by ui-shell; here we only hide the Live-only
+        // toolbar controls (shared toolbar until the phase-2 consolidation).
         if (this.isRunning) await this.pause();
         try { this._getActiveTTS().disconnect(); } catch { /* provider may be idle */ }
 
-        this._readMode = 'read';
-        document.getElementById('mode-toggle')?.classList.add('read-active');
-        // Hide live controls, show read panel.
-        this._setSel('.source-controls', 'none');
-        this._setEl('btn-start', 'none');
-        this._setEl('btn-pause', 'none');
-        this._setEl('engine-pill', 'none');
-        this._setEl('btn-tts', 'none');
-        this._setEl('transcript-content', 'none');
-        this._setEl('read-panel', '');
+        this._readMode = 'read'; // legacy alias for getActivity()==='read' checks
+        // Live controls now live inside the Live panel, which ui-shell hides —
+        // no per-element toggling needed anymore.
         this._resetReadUI();
+        this._populateReadQuickPick();
         this._showReadCapabilityHint();
+    }
+
+    /**
+     * Voice quick-pick in the Read panel — mirrors the active provider's voice
+     * options from its Settings select (DRY: one source of options, two views).
+     * Local voices come from the installed catalog instead.
+     */
+    async _populateReadQuickPick() {
+        const sel = document.getElementById('read-voice-quick');
+        if (!sel) return;
+        const s = settingsManager.get();
+        const provider = s.tts_provider || 'edge';
+        const map = {
+            edge: { src: 'select-edge-voice', key: 'edge_tts_voice' },
+            microsoft: { src: 'select-microsoft-voice', key: 'microsoft_v2_voice' },
+            'google-free': { src: 'select-google-free-voice', key: 'google_free_voice' },
+            tiktok: { src: 'select-tiktok-voice', key: 'tiktok_voice' },
+            google: { src: 'select-google-voice', key: 'google_tts_voice' },
+            elevenlabs: { src: 'select-tts-voice', key: 'tts_voice_id' },
+        };
+        sel.innerHTML = '';
+        if (provider === 'local') {
+            await this._refreshLocalVoices();
+            const installed = (this._localVoices || []).filter(v => v.installed);
+            installed.forEach(v => sel.add(new Option(v.display, v.id)));
+            sel.dataset.key = 'local_tts_voice';
+            if (s.local_tts_voice) sel.value = s.local_tts_voice;
+            sel.disabled = installed.length === 0;
+        } else {
+            const m = map[provider] || map.edge; // legacy/unknown provider → safe fallback
+            const src = document.getElementById(m.src);
+            if (src) [...src.options].forEach(o => sel.add(new Option(o.textContent, o.value)));
+            sel.dataset.key = m.key;
+            const cur = s[m.key];
+            if (cur) sel.value = cur;
+            sel.disabled = sel.options.length === 0;
+        }
     }
 
     _exitReadMode() {
         this._stopRead();
         this._readMode = 'live';
-        document.getElementById('mode-toggle')?.classList.remove('read-active');
-        this._setSel('.source-controls', '');
-        this._setEl('btn-start', '');
-        this._setEl('btn-pause', '');
-        this._setEl('engine-pill', '');
-        this._setEl('btn-tts', '');
-        this._setEl('read-panel', 'none');
-        this._setEl('transcript-content', '');
     }
 
     _setEl(id, display) {
@@ -1724,12 +1839,8 @@ class App {
     }
 
     _updateSourceButtons() {
-        document.getElementById('btn-source-system').classList.toggle('active',
-            this.currentSource === 'system');
-        document.getElementById('btn-source-mic').classList.toggle('active',
-            this.currentSource === 'microphone');
-        document.getElementById('btn-source-both').classList.toggle('active',
-            this.currentSource === 'both');
+        const sel = document.getElementById('select-audio-source');
+        if (sel) sel.value = this.currentSource;
     }
 
     // ─── Engine picker (Standard vs OpenAI) ──────────────────
@@ -1876,29 +1987,15 @@ class App {
         const btnTts = document.getElementById('btn-tts');
         if (btnTts) btnTts.style.display = isCloudRealtime ? 'none' : '';
 
-        // Mobile-parity: hide the entire TTS tab when engine is cloud-realtime.
-        // If the user is currently viewing TTS, snap them back to Translation.
-        const ttsTabBtn = document.querySelector('.settings-tab[data-tab="tab-tts"]');
-        const ttsTabContent = document.getElementById('tab-tts');
-        if (ttsTabBtn) ttsTabBtn.style.display = isCloudRealtime ? 'none' : '';
-        if (isCloudRealtime && ttsTabBtn?.classList.contains('active')) {
-            ttsTabBtn.classList.remove('active');
-            if (ttsTabContent) ttsTabContent.classList.remove('active');
-            const translationTabBtn = document.querySelector('.settings-tab[data-tab="tab-translation"]');
-            const translationTabContent = document.getElementById('tab-translation');
-            translationTabBtn?.classList.add('active');
-            translationTabContent?.classList.add('active');
+        // Wizard: TTS availability shows on the home card (disabled + reason) —
+        // never hidden. If the user is inside the TTS detail when switching to a
+        // cloud-realtime engine, snap back to home so the state change is visible.
+        this._updateSettingsCards();
+        if (isCloudRealtime && document.getElementById('tab-tts')?.classList.contains('active')) {
+            this._showSettingsScreen('settings-home');
         }
         const btnOpenAiAudio = document.getElementById('btn-openai-audio');
         if (btnOpenAiAudio) btnOpenAiAudio.style.display = 'none';
-
-        // All engines now support any audio source (system / mic / both).
-        const btnSourceMic = document.getElementById('btn-source-mic');
-        if (btnSourceMic) {
-            btnSourceMic.disabled = false;
-            btnSourceMic.classList.remove('locked');
-            btnSourceMic.title = 'Microphone (⌘2)';
-        }
 
         // Restrict target language list to 13 OpenAI-supported in openai mode.
         // Qwen LiveTranslate Flash has its own 60-language list (mirrors mobile
@@ -2780,6 +2877,8 @@ class App {
         btn.classList.toggle('recording', this.isRunning);
         iconPlay.style.display = this.isRunning ? 'none' : 'block';
         iconStop.style.display = this.isRunning ? 'block' : 'none';
+        const label = document.getElementById('btn-start-label');
+        if (label) label.textContent = this.isRunning ? 'Dừng' : 'Bắt đầu';
 
         // Pause is only actionable while running. (Don't also gate on isStarting:
         // start() calls this while isStarting is still true, and the click handler
@@ -2854,6 +2953,12 @@ class App {
                 text.textContent = 'Error';
                 break;
         }
+        // Live tab shows a red badge while a session runs so the user sees
+        // recording state even from the Đọc / Thư viện activities.
+        setLiveBadge(this.isRunning);
+        // Auto-hide chrome only while translating (idle 3s → hide, hover/keys → show)
+        if (this.isRunning) startAutoHideWatch();
+        else stopAutoHideWatch();
     }
 
     // ─── Window Position ───────────────────────────────────
@@ -2915,17 +3020,8 @@ class App {
     // ─── Compact Mode ───────────────────────────────
 
     _toggleCompact() {
-        this.isCompact = !this.isCompact;
-        const dragRegion = document.getElementById('drag-region');
-        const overlay = document.getElementById('overlay-view');
-
-        if (this.isCompact) {
-            dragRegion.classList.add('compact-hidden');
-            overlay.classList.add('compact-mode');
-        } else {
-            dragRegion.classList.remove('compact-hidden');
-            overlay.classList.remove('compact-mode');
-        }
+        // Unified with auto-hide in ui-shell — one chrome hide/show mechanism.
+        this.isCompact = toggleManualCompact();
     }
 
     _toggleViewMode() {
@@ -3157,13 +3253,7 @@ class App {
         hint.textContent = `Update v${version} available — go to Settings → About`;
         hint.addEventListener('click', () => {
             this._showView('settings');
-            // Switch to About tab
-            document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.settings-tab-content').forEach(t => t.classList.remove('active'));
-            const aboutTab = document.querySelector('[data-tab="tab-about"]');
-            const aboutContent = document.getElementById('tab-about');
-            if (aboutTab) aboutTab.classList.add('active');
-            if (aboutContent) aboutContent.classList.add('active');
+            this._showSettingsScreen('tab-about');
             hint.remove();
         });
         document.body.appendChild(hint);

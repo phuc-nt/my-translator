@@ -7,6 +7,28 @@ Format: `## v<version> - <YYYY-MM-DD>` followed by content until the next `## v`
 
 ---
 
+## v0.9.0 - 2026-07-11
+
+> First tagged release since v0.7.3 — also ships everything in the v0.8.0 section below (local/online TTS providers, Read mode, custom Vietnamese voices).
+
+### Changed — Main UI redesigned around 3 activities
+
+- **Activity switcher `[🎙 Live | 📖 Đọc | 📚 Thư viện]`** replaces the Live/Read toggle and the separate Sessions screen. Each space shows only its own controls; a live session keeps running in the background while you browse Thư viện (red badge on the Live tab).
+- **Live toolbar consolidated** from ~15 buttons to: status line (engine · languages · audio-source dropdown), transcript, and a footer with one primary [▶ Bắt đầu/Dừng] button, TTS, and a ⋯ menu (copy, clear, font size, text color, dual-view, compact, shortcuts). Audio source is now a dropdown — ⌘1/2/3 still switch it.
+- **Two window modes**: ⤢ toggles between the compact overlay and an expanded (~900×640) window that's comfortable for Đọc and Thư viện. Each mode remembers the size you resize it to.
+- **Toolbar auto-hides while translating** (3s idle → hidden; move the mouse or hover the top edge to reveal). Toggle it off in the ⋯ menu. Manual Compact remains.
+- **Đọc quick voice picker** — change the active TTS voice right in the Read panel; "Chỉnh thêm…" deep-links to Settings → TTS.
+- **Shortcut cheat-sheet** — press `?` (or ⋯ → Phím tắt).
+- Minimize button removed from the toolbar (⌘M still works).
+
+### Technical
+
+- New `src/js/ui-shell.js` owns activity navigation, the ⋯/dropdown popover helper, window modes (localStorage persistence), and the unified chrome hide/show used by both auto-hide and manual Compact.
+- `sessions-view` removed; its list/viewer markup now lives in the Thư viện panel. `mode-toggle` removed; `_readMode` kept as a legacy alias of `getActivity()==='read'`.
+- Transcript scrolling moved from `#transcript-container` to `#transcript-content` (container is now a flex column hosting the status/action rows).
+
+---
+
 ## v0.8.0 - 2026-07-06
 
 ### Added

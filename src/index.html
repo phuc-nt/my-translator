@@ -26,13 +26,46 @@
           <span id="settings-badge" class="settings-badge" style="display:none"></span>
         </button>
 
-        <div class="status-area" data-tauri-drag-region>
-          <span id="status-indicator" class="status-dot disconnected"></span>
-          <span id="status-text" class="status-text">Ready</span>
+        <!-- Activity switcher — the 3 first-class spaces of the app -->
+        <div class="activity-switcher">
+          <button class="activity-tab active" data-activity="live" title="Dịch trực tiếp" type="button">
+            🎙 Live<span id="live-tab-badge" class="live-tab-badge"></span>
+          </button>
+          <button class="activity-tab" data-activity="read" title="Đọc văn bản (TTS)" type="button">📖 Đọc</button>
+          <button class="activity-tab" data-activity="library" title="Sessions đã lưu" type="button">📚 Thư viện</button>
         </div>
 
-        <!-- Engine pill: persistent indicator + quick switch. Disabled while
-             a session is running (user must Stop first). -->
+        <div class="toolbar-spacer" data-tauri-drag-region></div>
+
+        <button id="btn-window-mode" class="icon-btn" title="Mở rộng cửa sổ">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15 3 21 3 21 9" />
+            <polyline points="9 21 3 21 3 15" />
+            <line x1="21" y1="3" x2="14" y2="10" />
+            <line x1="3" y1="21" x2="10" y2="14" />
+          </svg>
+        </button>
+
+        <button id="btn-pin" class="icon-btn active" title="Pin on top (always visible)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 17v5" />
+            <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76z" />
+          </svg>
+        </button>
+
+        <button id="btn-close" class="icon-btn close-btn" title="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Transcript Area (Live activity panel) -->
+    <div id="transcript-container" class="activity-panel active" data-activity="live" data-tauri-drag-region>
+      <!-- Live status row: engine · state · languages · audio source -->
+      <div class="live-status-row">
         <div class="engine-pill" id="engine-pill" title="Click to switch engine">
           <button class="engine-pill-btn active" data-engine-class="standard" type="button">
             <span class="engine-pill-icon">☁️</span>
@@ -47,44 +80,41 @@
             <span class="engine-pill-label">Qwen</span>
           </button>
         </div>
-
-        <div class="source-controls">
-          <button id="btn-source-system" class="source-btn active" title="System Audio (⌘1)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-              <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
-            </svg>
-          </button>
-          <button id="btn-source-mic" class="source-btn" title="Microphone (⌘2)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-              <line x1="12" y1="19" x2="12" y2="23" />
-              <line x1="8" y1="23" x2="16" y2="23" />
-            </svg>
-          </button>
-          <button id="btn-source-both" class="source-btn" title="System + Mic (⌘3)">
-            <svg width="16" height="14" viewBox="0 0 28 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polygon points="9 6 5 9 2 9 2 15 5 15 9 18 9 6" />
-              <path d="M12.5 9.5a3 3 0 0 1 0 5" />
-              <path d="M20 4a2.5 2.5 0 0 0-2.5 2.5v5a2.5 2.5 0 0 0 5 0v-5A2.5 2.5 0 0 0 20 4z" />
-              <path d="M25 10v1.5a5 5 0 0 1-10 0V10" />
-            </svg>
-          </button>
+        <div class="status-area">
+          <span id="status-indicator" class="status-dot disconnected"></span>
+          <span id="status-text" class="status-text">Ready</span>
         </div>
+        <span id="live-lang" class="live-lang" title="Cặp ngôn ngữ (đổi trong Cài đặt)"></span>
+        <select id="select-audio-source" class="source-select" title="Nguồn âm thanh (⌘1/2/3)">
+          <option value="system">🔊 System</option>
+          <option value="microphone">🎤 Mic</option>
+          <option value="both">🔊+🎤 Cả hai</option>
+        </select>
+      </div>
 
-        <button id="mode-toggle" class="mode-toggle-btn" title="Toggle Live / Read">
-          <span class="mode-seg mode-live">🎙 Live</span>
-          <span class="mode-seg mode-read">📖 Read</span>
-        </button>
+      <div id="transcript-content" data-tauri-drag-region>
+        <div class="transcript-placeholder">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+            opacity="0.4">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+            <line x1="12" y1="19" x2="12" y2="23" />
+            <line x1="8" y1="23" x2="16" y2="23" />
+          </svg>
+          <p>Press ▶ to start translating</p>
+        </div>
+      </div>
 
-        <button id="btn-start" class="action-btn" title="Start/Stop (⌘↩)">
+      <!-- Live action row: primary start/stop + pause + TTS + overflow menu -->
+      <div class="live-action-row">
+        <button id="btn-start" class="primary-action-btn" title="Start/Stop (⌘↩)">
           <svg id="icon-play" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
             <polygon points="5 3 19 12 5 21 5 3" />
           </svg>
           <svg id="icon-stop" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="display:none">
             <rect x="4" y="4" width="16" height="16" rx="2" />
           </svg>
+          <span id="btn-start-label">Bắt đầu</span>
         </button>
 
         <button id="btn-pause" class="action-btn" title="Pause (keep session)" disabled>
@@ -106,87 +136,41 @@
           <span class="tts-label">TTS</span>
         </button>
 
-        <div class="toolbar-group">
-          <button id="btn-clear" class="icon-btn" title="Clear transcript">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="3 6 5 6 21 6" />
-              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+        <div class="more-menu-wrap">
+          <button id="btn-more" class="icon-btn" title="Thêm">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" />
             </svg>
           </button>
-
-          <button id="btn-copy" class="icon-btn" title="Copy transcript">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-            </svg>
-          </button>
-
-          <button id="btn-sessions" class="icon-btn" title="View saved sessions">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
-          </button>
+          <div id="more-menu" class="more-menu" style="display:none">
+            <button id="btn-copy" class="more-menu-item" type="button">📋 Copy transcript</button>
+            <button id="btn-clear" class="more-menu-item" type="button">🗑 Xóa transcript</button>
+            <div class="more-menu-sep"></div>
+            <div class="more-menu-label">Hiển thị</div>
+            <div class="floating-controls">
+              <div class="font-controls">
+                <button id="btn-font-down" class="float-btn" title="Decrease font size">A−</button>
+                <span id="font-size-display" class="font-size-label">16</span>
+                <button id="btn-font-up" class="float-btn" title="Increase font size">A+</button>
+              </div>
+              <div class="color-controls">
+                <button class="color-dot active" data-color="#ffffff" title="White" style="background:#ffffff;"></button>
+                <button class="color-dot" data-color="#ffd700" title="Yellow" style="background:#ffd700;"></button>
+                <button class="color-dot" data-color="#00e5ff" title="Cyan" style="background:#00e5ff;"></button>
+              </div>
+              <button id="btn-view-mode" class="float-btn" title="Toggle dual view">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="7" height="18" rx="1" />
+                  <rect x="14" y="3" width="7" height="18" rx="1" />
+                </svg>
+              </button>
+            </div>
+            <div class="more-menu-sep"></div>
+            <button id="btn-compact" class="more-menu-item" type="button">⤢ Compact — ẩn thanh công cụ</button>
+            <button id="btn-auto-hide" class="more-menu-item" type="button">✓ Tự ẩn khi đang dịch</button>
+            <button id="btn-shortcuts" class="more-menu-item" type="button">⌨️ Phím tắt</button>
+          </div>
         </div>
-
-        <button id="btn-compact" class="icon-btn" title="Compact mode — hide control bar">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="4 14 10 14 10 20" />
-            <polyline points="20 10 14 10 14 4" />
-            <line x1="14" y1="10" x2="21" y2="3" />
-            <line x1="3" y1="21" x2="10" y2="14" />
-          </svg>
-        </button>
-
-        <button id="btn-pin" class="icon-btn active" title="Pin on top (always visible)">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 17v5" />
-            <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76z" />
-          </svg>
-        </button>
-
-        <button id="btn-minimize" class="icon-btn" title="Minimize to taskbar">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-        </button>
-
-        <button id="btn-close" class="icon-btn close-btn" title="Close">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-      </div>
-    </div>
-
-    <!-- Transcript Area -->
-    <div id="transcript-container" data-tauri-drag-region>
-      <div id="transcript-content" data-tauri-drag-region>
-        <div class="transcript-placeholder">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-            opacity="0.4">
-            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-            <line x1="12" y1="19" x2="12" y2="23" />
-            <line x1="8" y1="23" x2="16" y2="23" />
-          </svg>
-          <p>Press ▶ to start translating</p>
-        </div>
-      </div>
-
-      <!-- Read mode panel — paste Vietnamese text, hear it read aloud. Hidden by default. -->
-      <div id="read-panel" style="display:none">
-        <textarea id="read-input" placeholder="Dán hoặc gõ văn bản tiếng Việt để đọc to…"></textarea>
-        <div id="read-output" class="read-output" style="display:none"></div>
-        <div class="read-progress-bar"><div id="read-progress-fill"></div></div>
-        <div class="read-controls">
-          <button id="btn-read-play" class="read-btn read-btn-primary" type="button">▶ Đọc</button>
-          <button id="btn-read-pause" class="read-btn" type="button" style="display:none">⏸ Tạm dừng</button>
-          <button id="btn-read-stop" class="read-btn" type="button" style="display:none">⏹ Dừng</button>
-          <span id="read-progress" class="read-progress"></span>
-        </div>
-        <div id="read-hint" class="read-hint"></div>
       </div>
 
       <!-- Engine picker — shown before the first session each launch.
@@ -230,24 +214,69 @@
       </div>
     </div>
 
-    <!-- Floating controls (bottom) -->
-    <div class="floating-controls">
-      <div class="font-controls">
-        <button id="btn-font-down" class="float-btn" title="Decrease font size">A−</button>
-        <span id="font-size-display" class="font-size-label">16</span>
-        <button id="btn-font-up" class="float-btn" title="Increase font size">A+</button>
+    <!-- Read activity panel — paste Vietnamese text, hear it read aloud -->
+    <div id="read-panel" class="activity-panel" data-activity="read">
+      <!-- Quick-pick: change voice without leaving the panel -->
+      <div class="read-quick-row">
+        <span class="read-quick-label">Giọng:</span>
+        <select id="read-voice-quick" class="source-select"></select>
+        <button id="btn-read-tts-settings" class="read-quick-more" type="button" title="Mở cài đặt TTS đầy đủ">Chỉnh thêm…</button>
       </div>
-      <div class="color-controls">
-        <button class="color-dot active" data-color="#ffffff" title="White" style="background:#ffffff;"></button>
-        <button class="color-dot" data-color="#ffd700" title="Yellow" style="background:#ffd700;"></button>
-        <button class="color-dot" data-color="#00e5ff" title="Cyan" style="background:#00e5ff;"></button>
+      <textarea id="read-input" placeholder="Dán hoặc gõ văn bản tiếng Việt để đọc to…"></textarea>
+      <div id="read-output" class="read-output" style="display:none"></div>
+      <div class="read-progress-bar"><div id="read-progress-fill"></div></div>
+      <div class="read-controls">
+        <button id="btn-read-play" class="read-btn read-btn-primary" type="button">▶ Đọc</button>
+        <button id="btn-read-pause" class="read-btn" type="button" style="display:none">⏸ Tạm dừng</button>
+        <button id="btn-read-stop" class="read-btn" type="button" style="display:none">⏹ Dừng</button>
+        <span id="read-progress" class="read-progress"></span>
       </div>
-      <button id="btn-view-mode" class="float-btn" title="Toggle dual view">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="3" y="3" width="7" height="18" rx="1" />
-          <rect x="14" y="3" width="7" height="18" rx="1" />
-        </svg>
-      </button>
+      <div id="read-hint" class="read-hint"></div>
+    </div>
+
+    <!-- Library activity panel — saved sessions (list + viewer) -->
+    <div id="library-panel" class="activity-panel" data-activity="library">
+      <!-- Session list -->
+      <div id="sessions-list-panel" class="sessions-body">
+        <div class="sessions-search-row">
+          <input id="input-session-search" type="text" placeholder="Search sessions..." class="sessions-search-input" />
+          <button id="btn-open-transcripts" class="icon-btn small" title="Open saved transcripts folder in Finder">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+            </svg>
+          </button>
+        </div>
+        <div id="sessions-list"></div>
+      </div>
+
+      <!-- Session viewer (shown when a session is selected) -->
+      <div id="session-viewer" class="sessions-body" style="display:none">
+        <div class="session-viewer-header">
+          <button id="btn-session-back-to-list" class="icon-btn" title="Back to list">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="19" y1="12" x2="5" y2="12" />
+              <polyline points="12 19 5 12 12 5" />
+            </svg>
+          </button>
+          <span id="session-viewer-title" class="session-viewer-title-text"></span>
+          <button id="btn-session-edit-title" class="icon-btn small" title="Rename session">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+            </svg>
+          </button>
+          <button id="btn-session-export-srt" class="btn-secondary small" title="Export as .srt">.srt</button>
+          <button id="btn-session-export-txt" class="btn-secondary small" title="Export as .txt">.txt</button>
+          <button id="btn-session-copy" class="session-copy-btn" title="Copy content">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+            </svg>
+            Copy
+          </button>
+        </div>
+        <div id="session-viewer-content" class="session-content-scroll"></div>
+      </div>
     </div>
 
     <!-- Resize Handle -->
@@ -274,16 +303,45 @@
     </div>
 
     <div class="settings-body">
-      <!-- Tab Bar -->
-      <div class="settings-tabs">
-        <button class="settings-tab active" data-tab="tab-translation">Translation</button>
-        <button class="settings-tab" data-tab="tab-display">Display</button>
-        <button class="settings-tab" data-tab="tab-tts">TTS</button>
-        <button class="settings-tab" data-tab="tab-about">About</button>
+      <!-- Settings Home — 2-level wizard: cards navigate to detail screens -->
+      <div class="settings-tab-content active" id="settings-home">
+        <button class="settings-card" data-screen="tab-translation" id="card-translation">
+          <span class="settings-card-icon">🌐</span>
+          <span class="settings-card-text">
+            <span class="settings-card-title">Engine dịch</span>
+            <span class="settings-card-sub" id="card-translation-sub">—</span>
+          </span>
+          <span class="settings-card-chevron">›</span>
+        </button>
+        <button class="settings-card" data-screen="tab-tts" id="card-tts">
+          <span class="settings-card-icon">🔊</span>
+          <span class="settings-card-text">
+            <span class="settings-card-title">Giọng đọc (TTS)</span>
+            <span class="settings-card-sub" id="card-tts-sub">—</span>
+          </span>
+          <span class="settings-card-chevron">›</span>
+        </button>
+        <button class="settings-card" data-screen="tab-display" id="card-display">
+          <span class="settings-card-icon">🎨</span>
+          <span class="settings-card-text">
+            <span class="settings-card-title">Hiển thị</span>
+            <span class="settings-card-sub" id="card-display-sub">Font, kích thước chữ</span>
+          </span>
+          <span class="settings-card-chevron">›</span>
+        </button>
+        <button class="settings-card" data-screen="tab-about" id="card-about">
+          <span class="settings-card-icon">ℹ️</span>
+          <span class="settings-card-text">
+            <span class="settings-card-title">Giới thiệu</span>
+            <span class="settings-card-sub" id="card-about-sub">Phiên bản, cập nhật</span>
+          </span>
+          <span class="settings-card-chevron">›</span>
+        </button>
       </div>
 
-      <!-- Tab: Translation -->
-      <div class="settings-tab-content active" id="tab-translation">
+      <!-- Detail: Translation -->
+      <div class="settings-tab-content" id="tab-translation">
+        <button class="settings-back-row" data-screen="settings-home">‹ Cài đặt</button>
         <div class="settings-section">
           <span class="field-label">Engine</span>
           <select id="select-translation-mode">
@@ -604,6 +662,7 @@
 
       <!-- Tab: Display -->
       <div class="settings-tab-content" id="tab-display">
+        <button class="settings-back-row" data-screen="settings-home">‹ Cài đặt</button>
         <div class="settings-section">
           <div class="slider-field">
             <span class="field-label">Opacity</span>
@@ -629,6 +688,7 @@
 
       <!-- Tab: TTS -->
       <div class="settings-tab-content" id="tab-tts">
+        <button class="settings-back-row" data-screen="settings-home">‹ Cài đặt</button>
         <div class="settings-section">
           <span class="field-label">Provider</span>
           <select id="select-tts-provider">
@@ -855,6 +915,7 @@
 
       <!-- Tab: About -->
       <div class="settings-tab-content" id="tab-about">
+        <button class="settings-back-row" data-screen="settings-home">‹ Cài đặt</button>
         <div class="settings-section about-info">
           <div class="about-app-header">
             <span class="about-app-name">My Translator</span>
@@ -911,59 +972,22 @@
     </div>
   </div>
   <!-- ═══════════════════ SESSIONS VIEW ═══════════════════ -->
-  <div id="sessions-view" class="view">
-    <div class="sessions-header" data-tauri-drag-region>
-      <button id="btn-sessions-back" class="icon-btn" title="Back">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="19" y1="12" x2="5" y2="12" />
-          <polyline points="12 19 5 12 12 5" />
-        </svg>
-      </button>
-      <span class="sessions-title">Sessions</span>
-      <div class="sessions-header-actions">
-        <button id="btn-open-transcripts" class="icon-btn small" title="Open saved transcripts folder in Finder">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-          </svg>
-        </button>
-      </div>
-    </div>
 
-    <!-- Session list panel -->
-    <div id="sessions-list-panel" class="sessions-body">
-      <div class="sessions-search-row">
-        <input id="input-session-search" type="text" placeholder="Search sessions..." class="sessions-search-input" />
-      </div>
-      <div id="sessions-list"></div>
-    </div>
-
-    <!-- Session viewer (shown when a session is selected) -->
-    <div id="session-viewer" class="sessions-body" style="display:none">
-      <div class="session-viewer-header">
-        <button id="btn-session-back-to-list" class="icon-btn" title="Back to list">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="19" y1="12" x2="5" y2="12" />
-            <polyline points="12 19 5 12 12 5" />
-          </svg>
-        </button>
-        <span id="session-viewer-title" class="session-viewer-title-text"></span>
-        <button id="btn-session-edit-title" class="icon-btn small" title="Rename session">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-          </svg>
-        </button>
-        <button id="btn-session-export-srt" class="btn-secondary small" title="Export as .srt">.srt</button>
-        <button id="btn-session-export-txt" class="btn-secondary small" title="Export as .txt">.txt</button>
-        <button id="btn-session-copy" class="session-copy-btn" title="Copy content">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-          </svg>
-          Copy
-        </button>
-      </div>
-      <div id="session-viewer-content" class="session-content-scroll"></div>
+  <!-- ═══════════════════ SHORTCUT SHEET ═══════════════════ -->
+  <div id="shortcut-sheet" class="modal-overlay" style="display:none">
+    <div class="modal-card shortcut-card">
+      <h3 class="shortcut-title">⌨️ Phím tắt</h3>
+      <table class="shortcut-table">
+        <tr><td><kbd>⌘↩</kbd></td><td>Bắt đầu / Dừng dịch</td></tr>
+        <tr><td><kbd>⌘1</kbd> / <kbd>⌘2</kbd> / <kbd>⌘3</kbd></td><td>Nguồn: System / Mic / Cả hai</td></tr>
+        <tr><td><kbd>⌘T</kbd></td><td>Bật/tắt đọc bản dịch (TTS)</td></tr>
+        <tr><td><kbd>⌘,</kbd></td><td>Mở Cài đặt</td></tr>
+        <tr><td><kbd>⌘P</kbd></td><td>Ghim cửa sổ nổi</td></tr>
+        <tr><td><kbd>⌘D</kbd></td><td>Compact — ẩn thanh công cụ</td></tr>
+        <tr><td><kbd>⌘M</kbd></td><td>Thu nhỏ cửa sổ</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>Về màn hình chính / đóng bảng này</td></tr>
+        <tr><td><kbd>?</kbd></td><td>Mở bảng phím tắt</td></tr>
+      </table>
     </div>
   </div>
 
