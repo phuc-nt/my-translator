@@ -18,8 +18,9 @@
         "minWidth": 820,
         "minHeight": 240,
         "center": true,
-        "transparent": false,
+        "transparent": true,
         "decorations": false,
+        "shadow": false,
         "alwaysOnTop": true,
         "resizable": true,
         "skipTaskbar": false
